@@ -1,0 +1,107 @@
+# Full stack. Requires ../whatsapp2-ui as a sibling of this repo.
+#
+#   docker compose up --build
+#
+# Landing + dashboard UI: http://localhost:3001
+# Nest API / webhooks:    http://localhost:3000
+# Postgres (host):        localhost:5433
+
+name: techfind
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: techfind
+      POSTGRES_PASSWORD: techfind
+      POSTGRES_DB: techfind_whatsapp
+    ports:
+      # 5433 on the host avoids clashing with a local Windows PostgreSQL on 5432
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U techfind -d techfind_whatsapp']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '${API_PORT:-3000}:3000'
+    environment:
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgres://techfind:techfind@postgres:5432/techfind_whatsapp
+      REDIS_URL: redis://redis:6379
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-dev-verify-token}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v21.0}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+      WHATSAPP_PRIMARY_CHANNEL: ${WHATSAPP_PRIMARY_CHANNEL:-twilio}
+      WHATSAPP_SEND_FAILOVER: ${WHATSAPP_SEND_FAILOVER:-false}
+      WHATSAPP_SKIP_SEND: ${WHATSAPP_SKIP_SEND:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      TYPEORM_MIGRATIONS_RUN: ${TYPEORM_MIGRATIONS_RUN:-true}
+      TYPEORM_LOGGING: ${TYPEORM_LOGGING:-false}
+      DASHBOARD_BASIC_AUTH_USER: ${DASHBOARD_BASIC_AUTH_USER:-techfind}
+      DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-replace-me-before-staff-access}
+      DASHBOARD_TIMEZONE: ${DASHBOARD_TIMEZONE:-Africa/Nairobi}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../whatsapp2-ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_WHATSAPP_NUMBER: ${NEXT_PUBLIC_WHATSAPP_NUMBER:-}
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-3001}:3000'
+    environment:
+      NEST_API_URL: http://api:3000
+      DASHBOARD_BASIC_AUTH_USER: ${DASHBOARD_BASIC_AUTH_USER:-techfind}
+      DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-replace-me-before-staff-access}
+      PRIVACY_CONTACT_EMAIL: ${PRIVACY_CONTACT_EMAIL:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
