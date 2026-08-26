@@ -1,10 +1,22 @@
+# Build context only. The runtime image copies dist + production node_modules.
 node_modules
 dist
 coverage
 .git
+.github
 .env
 .env.*
 !.env.example
 *.log
 .temp
 .tmp
+test
+**/*spec.ts
+**/*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+eslint.config.*
+.eslintrc*
+.prettierrc*
+.prettierignore
