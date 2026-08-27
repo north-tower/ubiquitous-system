@@ -15,6 +15,7 @@ import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Ph
       useFactory: (config: ConfigService) => ({
         type: 'postgres' as const,
         url: config.getOrThrow<string>('DATABASE_URL'),
+        ssl: usePostgresSsl(config) ? { rejectUnauthorized: false } : false,
         autoLoadEntities: true,
         synchronize: false,
         migrationsRun: config.get<string>('TYPEORM_MIGRATIONS_RUN') !== 'false',
@@ -32,3 +33,11 @@ import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Ph
   ],
 })
 export class DatabaseModule {}
+
+function usePostgresSsl(config: ConfigService): boolean {
+  const flag = config.get<string>('DATABASE_SSL')?.trim().toLowerCase();
+  if (flag === 'true' || flag === '1') return true;
+  if (flag === 'false' || flag === '0') return false;
+  const url = config.get<string>('DATABASE_URL') ?? '';
+  return /sslmode=require/i.test(url);
+}

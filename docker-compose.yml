@@ -1,10 +1,9 @@
-# Full stack. Requires ../whatsapp2-ui as a sibling of this repo.
+# Nest API only. Does not build or start the Next.js UI.
 #
 #   docker compose up --build
 #
-# Landing + dashboard UI: http://localhost:3001
-# Nest API / webhooks:    http://localhost:3000
-# Postgres (host):        localhost:5433
+# API / webhooks:  http://localhost:3000
+# Postgres (host): localhost:5433
 
 name: techfind
 
@@ -16,7 +15,6 @@ services:
       POSTGRES_PASSWORD: techfind
       POSTGRES_DB: techfind_whatsapp
     ports:
-      # 5433 on the host avoids clashing with a local Windows PostgreSQL on 5432
       - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -82,24 +80,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  web:
-    build:
-      context: ../whatsapp2-ui
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_WHATSAPP_NUMBER: ${NEXT_PUBLIC_WHATSAPP_NUMBER:-}
-    restart: unless-stopped
-    ports:
-      - '${WEB_PORT:-3001}:3000'
-    environment:
-      NEST_API_URL: http://api:3000
-      DASHBOARD_BASIC_AUTH_USER: ${DASHBOARD_BASIC_AUTH_USER:-techfind}
-      DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-replace-me-before-staff-access}
-      PRIVACY_CONTACT_EMAIL: ${PRIVACY_CONTACT_EMAIL:-}
-    depends_on:
-      api:
         condition: service_healthy
 
 volumes:
