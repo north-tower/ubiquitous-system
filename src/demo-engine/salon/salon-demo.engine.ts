@@ -13,6 +13,8 @@ import {
 } from '../demo-engine.types';
 import { DemoSimulation } from '../demo-simulation.entity';
 import {
+  listSalonServices,
+  listSalonSlots,
   SALON_SERVICES,
   SALON_SLOTS,
   SALON_STEPS,
@@ -37,7 +39,7 @@ export class SalonDemoEngine implements DemoEngine {
         [
           'Perfect 😊',
           "For the next couple of minutes, pretend this is your salon's WhatsApp — I'm your receptionist.",
-          'Ask me something a customer would normally ask — booking a service, checking a price, whatever comes to mind.',
+          'Ask like a customer would, and name the service. For example: how much for braids?',
         ].join('\n'),
         { trailing: true },
       ),
@@ -91,7 +93,13 @@ export class SalonDemoEngine implements DemoEngine {
     if (!service) {
       return {
         replyText: withDisclaimer(
-          "I didn't catch which service you meant. Ask the way a customer would — booking, a price check, whatever's on their mind.",
+          [
+            "I didn't catch which service — a price check or booking still needs a name.",
+            'In this demo you can ask about:',
+            listSalonServices(),
+            '',
+            "Try: how much for braids? or book cornrows tomorrow.",
+          ].join('\n'),
           { trailing: true },
         ),
         updatedPayload: payload,
@@ -138,7 +146,11 @@ export class SalonDemoEngine implements DemoEngine {
     if (!slot) {
       return {
         replyText: withDisclaimer(
-          "I didn't catch a time. When tomorrow works for you?",
+          [
+            "I didn't catch a time. Tomorrow in this demo:",
+            listSalonSlots(),
+            'Reply with 1, 2, or 3 — or the clock time.',
+          ].join('\n'),
           { trailing: true },
         ),
         updatedPayload: payload,

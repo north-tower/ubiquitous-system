@@ -23,6 +23,7 @@ describe('SalonDemoEngine', () => {
     expect(started.replyText).toContain(DEMO_DISCLAIMER);
     expect(started.replyText.indexOf(DEMO_DISCLAIMER)).toBeGreaterThan(0);
     expect(started.replyText).not.toContain(listSalonServices());
+    expect(started.replyText.toLowerCase()).toContain('how much for braids');
     expect(started.replyText.toLowerCase()).not.toContain(
       'reply with a sample service',
     );
@@ -51,6 +52,28 @@ describe('SalonDemoEngine', () => {
     expect(afterService.updatedPayload.serviceName).toBe('Braids');
     expect(afterService.updatedPayload.priceKes).toBe(3500);
     expect(afterService.parsePath).toBe('deterministic');
+  });
+
+  it('on a vague booking or price check, lists the fixture services instead of looping', async () => {
+    const simulation = applyStep(
+      makeSimulation({ currentStep: SALON_STEPS.AWAITING_SERVICE }),
+      SALON_STEPS.AWAITING_SERVICE,
+      {},
+    );
+
+    const priceCheck = await engine.handleInput(simulation, 'Checking price');
+    expect(priceCheck.nextStep).toBe(SALON_STEPS.AWAITING_SERVICE);
+    expect(priceCheck.parsePath).toBe('unparsed');
+    expect(priceCheck.replyText).toContain(listSalonServices());
+    expect(priceCheck.replyText).toMatch(/braids/i);
+
+    const bookService = await engine.handleInput(
+      simulation,
+      'I would like to book a service',
+    );
+    expect(bookService.nextStep).toBe(SALON_STEPS.AWAITING_SERVICE);
+    expect(bookService.replyText).toContain(listSalonServices());
+    expect(bookService.replyText).toContain(DEMO_DISCLAIMER);
   });
 
   it('runs enquiry -> slot selection -> booking -> value reveal', async () => {
@@ -107,8 +130,8 @@ describe('SalonDemoEngine', () => {
     expect(result.nextStep).toBe(SALON_STEPS.AWAITING_SLOT);
     expect(result.updatedPayload.slotId).toBeUndefined();
     expect(result.replyText).toContain(DEMO_DISCLAIMER);
-    expect(result.replyText).not.toContain(listSalonSlots());
-    expect(result.replyText).not.toMatch(/1\)|2\)|3\)/);
+    expect(result.replyText).toContain(listSalonSlots());
+    expect(result.replyText).toMatch(/Reply with 1, 2, or 3/i);
   });
 
   it('does not leak payload between two conversationIds', async () => {
