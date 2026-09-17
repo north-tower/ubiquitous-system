@@ -13,6 +13,7 @@ import {
 } from '../demo-engine.types';
 import { DemoSimulation } from '../demo-simulation.entity';
 import {
+  listSolarPropertyTypes,
   recommendSolarTier,
   SOLAR_PROPERTY_TYPES,
   SOLAR_STEPS,
@@ -36,7 +37,7 @@ export class SolarDemoEngine implements DemoEngine {
         [
           'Perfect 😊',
           "For the next couple of minutes, pretend this is your solar company's WhatsApp — I'm helping a homeowner.",
-          'Ask me something a customer would normally ask — the kind of property, monthly electricity spend, whatever comes to mind.',
+          'Ask like a customer would, and name the property type. For example: we live in a bungalow.',
         ].join('\n'),
         { trailing: true },
       ),
@@ -94,7 +95,13 @@ export class SolarDemoEngine implements DemoEngine {
     if (!propertyType) {
       return {
         replyText: withDisclaimer(
-          "I didn't catch the kind of property. Say it however you would to a real installer.",
+          [
+            "I didn't catch the kind of property — a quote still needs a type.",
+            'In this demo you can ask about:',
+            listSolarPropertyTypes(),
+            '',
+            'Try: we live in a bungalow. or quote for an apartment.',
+          ].join('\n'),
           { trailing: true },
         ),
         updatedPayload: payload,
@@ -138,7 +145,11 @@ export class SolarDemoEngine implements DemoEngine {
     if (spendKes === null) {
       return {
         replyText: withDisclaimer(
-          "I couldn't read a monthly amount. A figure in KES is enough — even a rough one.",
+          [
+            "I couldn't read a monthly amount.",
+            'A figure in KES is enough — even a rough one.',
+            'Try: 8000 or around 25,000 a month.',
+          ].join('\n'),
           { trailing: true },
         ),
         updatedPayload: payload,

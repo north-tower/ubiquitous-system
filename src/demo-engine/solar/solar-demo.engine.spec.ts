@@ -16,6 +16,9 @@ describe('SolarDemoEngine', () => {
     expect(started.replyText).toContain(DEMO_DISCLAIMER);
     expect(started.replyText.indexOf(DEMO_DISCLAIMER)).toBeGreaterThan(0);
     expect(started.replyText).not.toContain(listSolarPropertyTypes());
+    expect(started.replyText.toLowerCase()).toContain(
+      'we live in a bungalow',
+    );
     expect(started.replyText.toLowerCase()).not.toContain(
       "what's the property type in this demo",
     );
@@ -43,6 +46,38 @@ describe('SolarDemoEngine', () => {
     expect(result.replyText).toContain('Standard home system');
     expect(result.replyText).toContain('behind the scenes');
     expect(result.replyText.toLowerCase()).toContain('not a binding');
+  });
+
+  it('on a vague quote, lists fixture property types instead of looping', async () => {
+    const simulation = applyStep(
+      makeSimulation({ currentStep: SOLAR_STEPS.AWAITING_PROPERTY_TYPE }),
+      SOLAR_STEPS.AWAITING_PROPERTY_TYPE,
+      {},
+    );
+
+    const quote = await engine.handleInput(simulation, 'checking a quote');
+    expect(quote.nextStep).toBe(SOLAR_STEPS.AWAITING_PROPERTY_TYPE);
+    expect(quote.parsePath).toBe('unparsed');
+    expect(quote.replyText).toContain(listSolarPropertyTypes());
+    expect(quote.replyText).toMatch(/bungalow/i);
+    expect(quote.replyText).toContain(DEMO_DISCLAIMER);
+  });
+
+  it('on an unreadable spend, gives a KES example instead of looping', async () => {
+    const simulation = makeSimulation({
+      currentStep: SOLAR_STEPS.AWAITING_SPEND,
+      payload: {
+        propertyTypeId: 'bungalow',
+        propertyTypeLabel: 'Bungalow',
+      },
+    });
+
+    const miss = await engine.handleInput(simulation, 'not sure yet');
+    expect(miss.nextStep).toBe(SOLAR_STEPS.AWAITING_SPEND);
+    expect(miss.parsePath).toBe('unparsed');
+    expect(miss.isComplete).toBe(false);
+    expect(miss.replyText).toMatch(/8000|25,000/);
+    expect(miss.replyText).toContain(DEMO_DISCLAIMER);
   });
 
   it('parses "KES 40,000" into 40000 and produces a recommendation', async () => {
