@@ -2,7 +2,7 @@
 #
 #   docker compose up --build
 #
-# API / webhooks:  http://localhost:3000
+# API / webhooks:  http://127.0.0.1:5600
 # Postgres (host): localhost:5433
 
 name: techfind
@@ -40,7 +40,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - '${API_PORT:-3000}:3000'
+      - '127.0.0.1:${API_PORT:-5600}:3000'
     environment:
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
