@@ -64,6 +64,9 @@ services:
       DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-replace-me-before-staff-access}
       DASHBOARD_TIMEZONE: ${DASHBOARD_TIMEZONE:-Africa/Nairobi}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      TENANT_FLOW: ${TENANT_FLOW:-techfind_demo}
+      DIVINE_BUDGET_BASE_URL: ${DIVINE_BUDGET_BASE_URL:-}
+      DIVINE_BUDGET_API_KEY: ${DIVINE_BUDGET_API_KEY:-}
     healthcheck:
       test:
         [
