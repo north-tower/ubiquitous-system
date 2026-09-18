@@ -8,6 +8,8 @@ import { ConversationModule } from './conversation/conversation.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DatabaseModule } from './database/database.module';
 import { DemoEngineModule } from './demo-engine/demo-engine.module';
+import { DivineBudgetModule } from './divine-budget/divine-budget.module';
+import { EnquiryFlowModule } from './enquiry-flow/enquiry-flow.module';
 import { LeadModule } from './lead/lead.module';
 import { OutboundModule } from './outbound/outbound.module';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -26,6 +28,8 @@ import { WhatsappWebhookModule } from './whatsapp-webhook/whatsapp-webhook.modul
     LeadModule,
     DashboardModule,
     AiOrchestratorModule,
+    DivineBudgetModule,
+    EnquiryFlowModule,
     OutboundModule,
     WhatsappWebhookModule,
   ],

@@ -2,7 +2,9 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
 import { ConversationService } from '../conversation/conversation.service';
+import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
+import { DEFAULT_TENANT_FLOW } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
 import { parseTwilioWebhook } from './parse-twilio';
@@ -16,6 +18,7 @@ export class WhatsappWebhookService {
     private readonly tenantResolver: TenantResolverService,
     private readonly conversations: ConversationService,
     private readonly orchestrator: AiOrchestratorService,
+    private readonly enquiryFlow: EnquiryFlowService,
     private readonly outbound: OutboundMessageService,
   ) {}
 
@@ -47,6 +50,7 @@ export class WhatsappWebhookService {
 
       await this.processInbound({
         tenantId: tenant.id,
+        flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
         phoneNumber: item.phoneNumber,
         text: item.text,
         raw: item.raw,
@@ -71,6 +75,7 @@ export class WhatsappWebhookService {
     try {
       await this.processInbound({
         tenantId: tenant.id,
+        flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
         phoneNumber: parsed.phoneNumber,
         text: parsed.text,
         raw: parsed.raw,
@@ -87,6 +92,7 @@ export class WhatsappWebhookService {
 
   private async processInbound(input: {
     tenantId: string;
+    flow: string;
     phoneNumber: string;
     text: string | null;
     raw: unknown;
@@ -99,10 +105,16 @@ export class WhatsappWebhookService {
       raw: input.raw,
     });
 
-    const { replyText } = await this.orchestrator.handleInboundMessage(
-      conversation.id,
-      input.text,
-    );
+    const replyText =
+      input.flow === 'enquiry_intake'
+        ? (await this.enquiryFlow.handleInbound(conversation, input.text))
+            .replyText
+        : (
+            await this.orchestrator.handleInboundMessage(
+              conversation.id,
+              input.text,
+            )
+          ).replyText;
 
     await this.outbound.sendAll([
       {

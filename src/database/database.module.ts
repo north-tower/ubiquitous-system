@@ -7,6 +7,7 @@ import { Phase2StateMachine20260826020000 } from './migrations/20260826020000-Ph
 import { Phase3DemoSimulations20260826030000 } from './migrations/20260826030000-Phase3DemoSimulations';
 import { Phase4AiUsageEvents20260826040000 } from './migrations/20260826040000-Phase4AiUsageEvents';
 import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Phase5LeadProfiles';
+import { Phase6EnquiryFlow20260918120000 } from './migrations/20260918120000-Phase6EnquiryFlow';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Ph
           Phase3DemoSimulations20260826030000,
           Phase4AiUsageEvents20260826040000,
           Phase5LeadProfiles20260826050000,
+          Phase6EnquiryFlow20260918120000,
         ],
         logging: config.get<string>('TYPEORM_LOGGING') === 'true',
       }),

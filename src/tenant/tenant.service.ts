@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from './tenant.entity';
+import {
+  DEFAULT_TENANT_FLOW,
+  isTenantFlow,
+  type TenantFlow,
+} from './tenant-flow';
 
 const TWILIO_PHONE_NUMBER_PLACEHOLDER = 'twilio';
 
@@ -59,10 +64,14 @@ export class TenantService implements OnModuleInit {
       this.config.get<string>('META_WHATSAPP_BUSINESS_ACCOUNT_ID') ?? null;
 
     const existing = await this.findExistingTechfind(metaPhoneNumberId);
+    const flow = this.configuredFlow();
     if (existing) {
       existing.name = 'Techfind Consulting';
       existing.whatsappPhoneNumberId = whatsappPhoneNumberId;
       existing.whatsappBusinessAccountId = whatsappBusinessAccountId;
+      if (flow) {
+        existing.flow = flow;
+      }
       return this.tenants.save(existing);
     }
 
@@ -71,6 +80,7 @@ export class TenantService implements OnModuleInit {
         name: 'Techfind Consulting',
         whatsappPhoneNumberId,
         whatsappBusinessAccountId,
+        flow: flow ?? DEFAULT_TENANT_FLOW,
       }),
     );
     this.logger.log(`Seeded Techfind tenant id=${saved.id}`);
@@ -91,5 +101,22 @@ export class TenantService implements OnModuleInit {
     return this.tenants.findOne({
       where: { whatsappPhoneNumberId: TWILIO_PHONE_NUMBER_PLACEHOLDER },
     });
+  }
+
+  /**
+   * Optional override so a single Twilio number can be pointed at the
+   * Divine Budget intake without a SQL update. Unset, the existing tenant
+   * keeps whatever flow it already has (default techfind_demo).
+   */
+  private configuredFlow(): TenantFlow | null {
+    const raw = this.config.get<string>('TENANT_FLOW')?.trim();
+    if (!raw) {
+      return null;
+    }
+    if (!isTenantFlow(raw)) {
+      this.logger.warn(`Ignoring unknown TENANT_FLOW=${raw}`);
+      return null;
+    }
+    return raw;
   }
 }

@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
 import { ConversationService } from '../conversation/conversation.service';
+import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
@@ -19,6 +20,9 @@ describe('WhatsappWebhookService', () => {
   const orchestrator = {
     handleInboundMessage: jest.fn(),
   };
+  const enquiryFlow = {
+    handleInbound: jest.fn(),
+  };
   const outbound = {
     sendAll: jest.fn(),
   };
@@ -35,6 +39,7 @@ describe('WhatsappWebhookService', () => {
       tenantResolver as unknown as TenantResolverService,
       conversations as unknown as ConversationService,
       orchestrator as unknown as AiOrchestratorService,
+      enquiryFlow as unknown as EnquiryFlowService,
       outbound as unknown as OutboundMessageService,
     );
   }
@@ -44,6 +49,7 @@ describe('WhatsappWebhookService', () => {
     tenantResolver.resolveDefault.mockReset();
     conversations.recordInbound.mockReset();
     orchestrator.handleInboundMessage.mockReset();
+    enquiryFlow.handleInbound.mockReset();
     outbound.sendAll.mockReset();
     conversations.recordInbound.mockResolvedValue({
       conversation: { id: 'conv-1', currentState: ConversationState.NEW },
@@ -52,6 +58,9 @@ describe('WhatsappWebhookService', () => {
     orchestrator.handleInboundMessage.mockResolvedValue({
       conversation: { id: 'conv-1' },
       replyText: 'hello back',
+    });
+    enquiryFlow.handleInbound.mockResolvedValue({
+      replyText: 'what are you planning?',
     });
     outbound.sendAll.mockResolvedValue(undefined);
   });
@@ -85,6 +94,7 @@ describe('WhatsappWebhookService', () => {
       'conv-1',
       'hello',
     );
+    expect(enquiryFlow.handleInbound).not.toHaveBeenCalled();
     expect(outbound.sendAll).toHaveBeenCalledWith([
       {
         conversationId: 'conv-1',
@@ -145,5 +155,38 @@ describe('WhatsappWebhookService', () => {
 
     expect(conversations.recordInbound).not.toHaveBeenCalled();
     expect(outbound.sendAll).not.toHaveBeenCalled();
+  });
+
+  it('routes an enquiry_intake tenant to the enquiry flow, not the Techfind orchestrator', async () => {
+    const conversation = {
+      id: 'conv-1',
+      prospectPhone: '254798229340',
+      currentState: ConversationState.NEW,
+    };
+    tenantResolver.resolveDefault.mockResolvedValue({
+      id: 'tenant-1',
+      flow: 'enquiry_intake',
+    });
+    conversations.recordInbound.mockResolvedValue({
+      conversation,
+      message: { id: 'msg-1' },
+    });
+
+    await createService().handleTwilioInbound({
+      SmsStatus: 'received',
+      Body: 'hi',
+      From: 'whatsapp:+254798229340',
+      WaId: '254798229340',
+      MessageSid: 'SM123',
+    });
+
+    expect(enquiryFlow.handleInbound).toHaveBeenCalledWith(conversation, 'hi');
+    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      expect.objectContaining({
+        text: 'what are you planning?',
+        channel: 'twilio',
+      }),
+    ]);
   });
 });
