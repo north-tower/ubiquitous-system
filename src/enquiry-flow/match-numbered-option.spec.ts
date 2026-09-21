@@ -1,6 +1,7 @@
 import {
   formatNumberedOptions,
   matchNumberedOption,
+  matchNumberedOptions,
   type NumberedOption,
 } from './match-numbered-option';
 
@@ -38,6 +39,35 @@ describe('matchNumberedOption', () => {
 
   it('does not treat "20th December" as option 20', () => {
     expect(matchNumberedOption('20th December', OPTIONS)).toBeNull();
+  });
+});
+
+describe('matchNumberedOptions', () => {
+  it('returns a single match as a one-item list', () => {
+    expect(
+      matchNumberedOptions('wedding', OPTIONS)?.map((row) => row.id),
+    ).toEqual(['wedding']);
+  });
+
+  it('accepts several list numbers', () => {
+    expect(
+      matchNumberedOptions('1, 3', OPTIONS)?.map((row) => row.id),
+    ).toEqual(['wedding', 'birthday']);
+    expect(
+      matchNumberedOptions('1 and 2', OPTIONS)?.map((row) => row.id),
+    ).toEqual(['wedding', 'corporate']);
+  });
+
+  it('matches more than one label in the same reply', () => {
+    expect(
+      matchNumberedOptions('wedding and birthday', OPTIONS)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual(['wedding', 'birthday']);
+  });
+
+  it('returns null for an empty reply', () => {
+    expect(matchNumberedOptions('', OPTIONS)).toBeNull();
   });
 });
 

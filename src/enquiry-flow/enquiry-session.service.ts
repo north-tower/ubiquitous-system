@@ -11,12 +11,16 @@ export class EnquirySessionService {
     private readonly sessions: Repository<EnquirySession>,
   ) {}
 
-  async start(conversationId: string, step: string): Promise<EnquirySession> {
+  async start(
+    conversationId: string,
+    step: string,
+    payload: EnquiryPayload = {},
+  ): Promise<EnquirySession> {
     return this.sessions.save(
       this.sessions.create({
         conversationId,
         currentStep: step,
-        payload: {},
+        payload,
         submittedAt: null,
         reference: null,
       }),

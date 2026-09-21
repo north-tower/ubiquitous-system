@@ -1,4 +1,4 @@
-import { parseEventDate } from './parse-event-date';
+import { formatIsoDateDisplay, parseEventDate } from './parse-event-date';
 
 const SEP_2026 = new Date('2026-09-18T10:00:00+03:00');
 const JAN_2027 = new Date('2027-01-15T10:00:00+03:00');
@@ -57,5 +57,11 @@ describe('parseEventDate', () => {
   it('returns null for unparseable input', () => {
     expect(parseEventDate('sometime soon', SEP_2026)).toBeNull();
     expect(parseEventDate('', SEP_2026)).toBeNull();
+  });
+});
+
+describe('formatIsoDateDisplay', () => {
+  it('spells an ISO date without rejecting past years', () => {
+    expect(formatIsoDateDisplay('2026-12-20')).toBe('20 December 2026');
   });
 });

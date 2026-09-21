@@ -35,16 +35,22 @@ export const SERVICE_OPTIONS: NumberedOption[] = [
   { id: 'other', label: 'Something else', aliases: ['other'] },
 ];
 
-export const INTENT_OPTIONS: NumberedOption[] = [
+export const RETURNING_OPTIONS: NumberedOption[] = [
   {
-    id: 'quote',
-    label: 'Check the date & send a quote',
-    aliases: ['quote', 'check the date', 'send a quote'],
+    id: 'wait',
+    label: "I'll wait for the team",
+    aliases: ['wait', "i'll wait", 'ok', 'okay', 'that one', 'existing'],
   },
   {
-    id: 'callback',
-    label: 'Talk to the team',
-    aliases: ['talk', 'call me', 'speak to someone', 'human'],
+    id: 'new',
+    label: 'Start a new enquiry',
+    aliases: [
+      'new',
+      'new enquiry',
+      'new event',
+      'another event',
+      'start a new enquiry',
+    ],
   },
 ];
 
@@ -64,5 +70,6 @@ export const CONFIRM_OPTIONS: NumberedOption[] = [
 export const eventTypeList = (): string =>
   formatNumberedOptions(EVENT_TYPE_OPTIONS);
 export const serviceList = (): string => formatNumberedOptions(SERVICE_OPTIONS);
-export const intentList = (): string => formatNumberedOptions(INTENT_OPTIONS);
+export const returningList = (): string =>
+  formatNumberedOptions(RETURNING_OPTIONS);
 export const confirmList = (): string => formatNumberedOptions(CONFIRM_OPTIONS);

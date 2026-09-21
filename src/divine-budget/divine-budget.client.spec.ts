@@ -115,6 +115,38 @@ describe('DivineBudgetClient', () => {
     );
     env.DIVINE_BUDGET_BASE_URL = 'https://divine.example';
   });
+
+  it('looks up a WhatsApp number without blocking on failure', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        jsonResponse(200, {
+          known: true,
+          firstName: 'Mike',
+          contactName: 'Mike Otieno',
+          isCustomer: true,
+          openEnquiry: null,
+          upcomingEvent: null,
+        }),
+      );
+
+    await expect(client.lookupContact('+254798229340')).resolves.toEqual({
+      known: true,
+      firstName: 'Mike',
+      contactName: 'Mike Otieno',
+      isCustomer: true,
+      openEnquiry: null,
+      upcomingEvent: null,
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://divine.example/api/service/contacts?phone=%2B254798229340',
+    );
+  });
+
+  it('treats a lookup outage as unknown so intake still starts', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+    await expect(client.lookupContact('+254798229340')).resolves.toBeNull();
+  });
 });
 
 function jsonResponse(status: number, body: unknown): Response {

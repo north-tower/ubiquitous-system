@@ -9,6 +9,7 @@ export type DivineBudgetEnquiryInput = {
   guestEstimateRaw?: string;
   requestedServices?: string;
   notes?: string;
+  budgetRange?: string;
   wantsCallback: boolean;
   idempotencyKey?: string;
 };
@@ -17,6 +18,29 @@ export type DivineBudgetEnquiryResult = {
   reference: string;
   enquiryId: string;
 };
+
+export type DivineBudgetOpenEnquiry = {
+  reference: string;
+  status: string;
+  eventType: string | null;
+};
+
+export type DivineBudgetUpcomingEvent = {
+  title: string;
+  eventDate: string;
+  status: string;
+};
+
+export type DivineBudgetContact =
+  | { known: false }
+  | {
+      known: true;
+      firstName: string | null;
+      contactName: string | null;
+      isCustomer: boolean;
+      openEnquiry: DivineBudgetOpenEnquiry | null;
+      upcomingEvent: DivineBudgetUpcomingEvent | null;
+    };
 
 /**
  * Distinguishes a caller mistake (4xx — do not retry, it will fail the

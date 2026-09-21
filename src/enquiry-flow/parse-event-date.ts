@@ -216,3 +216,20 @@ function isBeforeToday(
 function toIso(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
+
+/** Spells an already-resolved ISO date for chat, including dates that are
+ * already past (lookup of an upcoming event uses this, not parseEventDate). */
+export function formatIsoDateDisplay(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) {
+    return iso;
+  }
+  const day = Number(match[3]);
+  const month = Number(match[2]);
+  const year = Number(match[1]);
+  const monthName = MONTH_NAMES[month];
+  if (!monthName) {
+    return iso;
+  }
+  return `${day} ${monthName} ${year}`;
+}
