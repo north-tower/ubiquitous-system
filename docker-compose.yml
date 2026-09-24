@@ -77,7 +77,7 @@ services:
       DIVINE_BUDGET_BASE_URL: ${DIVINE_BUDGET_BASE_URL:-}
       DIVINE_BUDGET_API_KEY: ${DIVINE_BUDGET_API_KEY:-}
     volumes:
-      # Host folder with Baileys creds (default tenant + baileys-auth/<tenantId>). Not in the image.
+      # Bind-mounted Baileys sessions; entrypoint chowns to uid 1001 (nestjs) so pairing can mkdir tenant dirs.
       - ${BAILEYS_AUTH_HOST_PATH:-./baileys-auth}:/app/baileys-auth
     healthcheck:
       test:
