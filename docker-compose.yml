@@ -53,7 +53,9 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
-      WHATSAPP_PRIMARY_CHANNEL: ${WHATSAPP_PRIMARY_CHANNEL:-twilio}
+      WHATSAPP_PRIMARY_CHANNEL: ${WHATSAPP_PRIMARY_CHANNEL:-baileys}
+      BAILEYS_ENABLED: ${BAILEYS_ENABLED:-false}
+      BAILEYS_AUTH_DIR: ${BAILEYS_AUTH_DIR:-baileys-auth}
       TWILIO_EVENT_TYPE_CONTENT_SID: ${TWILIO_EVENT_TYPE_CONTENT_SID:-}
       WHATSAPP_SEND_FAILOVER: ${WHATSAPP_SEND_FAILOVER:-false}
       WHATSAPP_SKIP_SEND: ${WHATSAPP_SKIP_SEND:-}
@@ -65,9 +67,18 @@ services:
       DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-replace-me-before-staff-access}
       DASHBOARD_TIMEZONE: ${DASHBOARD_TIMEZONE:-Africa/Nairobi}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      TENANT_PORTAL_APP_URL: ${TENANT_PORTAL_APP_URL:-http://localhost:3001}
       TENANT_FLOW: ${TENANT_FLOW:-techfind_demo}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
+      MAILGUN_URL: ${MAILGUN_URL:-}
       DIVINE_BUDGET_BASE_URL: ${DIVINE_BUDGET_BASE_URL:-}
       DIVINE_BUDGET_API_KEY: ${DIVINE_BUDGET_API_KEY:-}
+    volumes:
+      # Host folder with Baileys creds (default tenant + baileys-auth/<tenantId>). Not in the image.
+      - ${BAILEYS_AUTH_HOST_PATH:-./baileys-auth}:/app/baileys-auth
     healthcheck:
       test:
         [
