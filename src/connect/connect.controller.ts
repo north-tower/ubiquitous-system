@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import {
   parseDateQuery,
   parseLeadScoreQuery,
@@ -21,6 +21,16 @@ export class ConnectController {
   @Get(':token')
   link(@Param('token') token: string): Promise<ConnectLink> {
     return this.connect.link(token);
+  }
+
+  @Post(':token/pair')
+  pair(@Param('token') token: string): Promise<ConnectLink> {
+    return this.connect.pair(token);
+  }
+
+  @Post(':token/pair/stop')
+  stopPair(@Param('token') token: string): Promise<ConnectLink> {
+    return this.connect.stopPair(token);
   }
 
   @Get(':token/today')

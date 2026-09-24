@@ -20,8 +20,19 @@ export class DashboardTenantService {
     const name = typeof body.name === 'string' ? body.name : '';
     const flow = typeof body.flow === 'string' ? body.flow : '';
     const tenant = await this.tenants.createStaffTenant({ name, flow });
-    await this.baileys.startSession(tenant.id);
     return { id: tenant.id };
+  }
+
+  async pair(id: string): Promise<DashboardTenantWhatsapp> {
+    await this.requireTenant(id);
+    await this.baileys.beginPairing(id);
+    return this.whatsapp(id);
+  }
+
+  async stopPair(id: string): Promise<DashboardTenantWhatsapp> {
+    await this.requireTenant(id);
+    await this.baileys.endPairing(id);
+    return this.whatsapp(id);
   }
 
   async list(): Promise<DashboardTenantSummary[]> {
@@ -37,15 +48,20 @@ export class DashboardTenantService {
   }
 
   async whatsapp(id: string): Promise<DashboardTenantWhatsapp> {
-    const tenant = await this.tenants.findById(id);
-    if (!tenant) {
-      throw new NotFoundException('Unknown tenant');
-    }
+    const tenant = await this.requireTenant(id);
     const link = this.baileys.whatsappLink(tenant.id);
     return {
       status: link.status,
       linkedPhone: tenant.linkedPhone,
       qrDataUrl: link.qrDataUrl,
     };
+  }
+
+  private async requireTenant(id: string) {
+    const tenant = await this.tenants.findById(id);
+    if (!tenant) {
+      throw new NotFoundException('Unknown tenant');
+    }
+    return tenant;
   }
 }

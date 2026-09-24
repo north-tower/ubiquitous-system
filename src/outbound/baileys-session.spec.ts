@@ -1,6 +1,7 @@
 import { join } from 'path';
 import {
   authDirForTenant,
+  credsAreLinked,
   isTenantAuthFolderName,
   linkedPhoneFromUser,
   visibleQrDataUrl,
@@ -54,6 +55,15 @@ describe('baileys session helpers', () => {
   it('does not store a LID as a phone number', () => {
     expect(linkedPhoneFromUser({ id: '123456789012345@lid' })).toBeNull();
     expect(linkedPhoneFromUser(undefined)).toBeNull();
+  });
+
+  it('treats a creds file as linked only when WhatsApp has a user id', () => {
+    expect(credsAreLinked({ me: { id: '254712345678:1@s.whatsapp.net' } })).toBe(
+      true,
+    );
+    expect(credsAreLinked({ registered: false })).toBe(false);
+    expect(credsAreLinked({ me: {} })).toBe(false);
+    expect(credsAreLinked(null)).toBe(false);
   });
 
   it('exposes the QR data URL only while waiting for a scan', () => {

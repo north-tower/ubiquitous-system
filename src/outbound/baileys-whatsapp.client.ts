@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type Dirent } from 'fs';
-import { readdir } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
+import { join } from 'path';
 import { TenantService } from '../tenant/tenant.service';
 import {
   authDirForTenant,
   BAILEYS_SESSIONS_ROOT,
+  credsAreLinked,
   isTenantAuthFolderName,
   linkedPhoneFromUser,
   visibleQrDataUrl,
@@ -82,6 +84,9 @@ type QrCodeModule = {
   default?: { toDataURL?: (text: string) => Promise<string> };
 };
 
+/** How long a QR socket stays up after the last "still connecting" ping. */
+const PAIRING_LEASE_MS = 35_000;
+
 type SessionRecord = {
   tenantId: string;
   sock: BaileysSocket | null;
@@ -106,6 +111,8 @@ export class BaileysWhatsappClient
   private destroyed = false;
   private bootPromise: Promise<void> | null = null;
   private defaultTenantId: string | null = null;
+  private readonly pairingUntil = new Map<string, number>();
+  private pairingTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -168,6 +175,33 @@ export class BaileysWhatsappClient
     return session.connectPromise;
   }
 
+  /**
+   * Open a QR socket only while someone is on the connect screen.
+   * Repeated calls extend the lease so the code can refresh during a scan.
+   */
+  async beginPairing(tenantId: string): Promise<void> {
+    this.notePairingInterest(tenantId);
+    const existing = this.sessions.get(tenantId);
+    if (existing?.status === 'connected' && existing.sock) {
+      return;
+    }
+    if (existing) {
+      existing.stopped = false;
+      if (existing.status === 'logged_out') {
+        existing.status = 'waiting_for_scan';
+        existing.qrDataUrl = null;
+      }
+    }
+    await this.startSession(tenantId);
+  }
+
+  /** Close an unpaired socket. A connected login is left running. */
+  async endPairing(tenantId: string): Promise<void> {
+    this.pairingUntil.delete(tenantId);
+    this.clearPairingTimerIfIdle();
+    await this.stopUnpairedSession(tenantId);
+  }
+
   async onModuleInit(): Promise<void> {
     if (!this.isConfigured() || process.env.NODE_ENV === 'test') {
       return;
@@ -181,6 +215,11 @@ export class BaileysWhatsappClient
   async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
     this.autostart = false;
+    if (this.pairingTimer) {
+      clearInterval(this.pairingTimer);
+      this.pairingTimer = null;
+    }
+    this.pairingUntil.clear();
     await Promise.all(
       [...this.sessions.values()].map(async (session) => {
         session.stopped = true;
@@ -247,7 +286,7 @@ export class BaileysWhatsappClient
     const fallback = await this.tenants.findDefault();
     this.defaultTenantId = fallback?.id ?? null;
     const ids = new Set<string>();
-    if (fallback) {
+    if (fallback && (await this.hasLinkedAuth(fallback.id))) {
       ids.add(fallback.id);
     }
     for (const tenantId of await this.tenantIdsWithAuthFolders()) {
@@ -261,7 +300,9 @@ export class BaileysWhatsappClient
         );
         continue;
       }
-      ids.add(tenant.id);
+      if (await this.hasLinkedAuth(tenant.id)) {
+        ids.add(tenant.id);
+      }
     }
     for (const id of ids) {
       try {
@@ -291,6 +332,81 @@ export class BaileysWhatsappClient
         (entry) => entry.isDirectory() && isTenantAuthFolderName(entry.name),
       )
       .map((entry) => entry.name);
+  }
+
+  private notePairingInterest(tenantId: string): void {
+    this.pairingUntil.set(tenantId, Date.now() + PAIRING_LEASE_MS);
+    if (this.pairingTimer) {
+      return;
+    }
+    this.pairingTimer = setInterval(() => {
+      void this.expirePairingLeases();
+    }, 5_000);
+    this.pairingTimer.unref();
+  }
+
+  private clearPairingTimerIfIdle(): void {
+    if (this.pairingUntil.size > 0 || !this.pairingTimer) {
+      return;
+    }
+    clearInterval(this.pairingTimer);
+    this.pairingTimer = null;
+  }
+
+  private async expirePairingLeases(): Promise<void> {
+    const now = Date.now();
+    for (const [tenantId, until] of this.pairingUntil) {
+      if (until > now) {
+        continue;
+      }
+      this.pairingUntil.delete(tenantId);
+      await this.stopUnpairedSession(tenantId);
+    }
+    this.clearPairingTimerIfIdle();
+  }
+
+  private async stopUnpairedSession(tenantId: string): Promise<void> {
+    const session = this.sessions.get(tenantId);
+    if (!session || (session.status === 'connected' && session.sock)) {
+      return;
+    }
+    session.stopped = true;
+    session.qrDataUrl = null;
+    const sock = session.sock;
+    session.sock = null;
+    this.sessions.delete(tenantId);
+    if (!sock) {
+      return;
+    }
+    try {
+      await sock.end(undefined);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to close unpaired WhatsApp session tenant=${tenantId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async hasLinkedAuth(tenantId: string): Promise<boolean> {
+    try {
+      const raw = await readFile(
+        join(this.authDir(tenantId), 'creds.json'),
+        'utf8',
+      );
+      return credsAreLinked(JSON.parse(raw) as unknown);
+    } catch (error) {
+      if (isEnoent(error) || error instanceof SyntaxError) {
+        return false;
+      }
+      this.logger.warn(
+        `Could not read Baileys creds tenant=${tenantId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
   }
 
   private authDir(tenantId: string): string {
@@ -377,6 +493,8 @@ export class BaileysWhatsappClient
     }
 
     if (update.connection === 'open') {
+      this.pairingUntil.delete(session.tenantId);
+      this.clearPairingTimerIfIdle();
       session.status = 'connected';
       session.qrDataUrl = null;
       this.logger.log(

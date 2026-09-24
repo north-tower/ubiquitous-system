@@ -9,7 +9,8 @@ describe('ConnectService', () => {
     findByConnectToken: jest.fn(),
   };
   const baileys = {
-    startSession: jest.fn(),
+    beginPairing: jest.fn(),
+    endPairing: jest.fn(),
     whatsappLink: jest.fn(),
   };
   const dashboard = {
@@ -23,7 +24,8 @@ describe('ConnectService', () => {
 
   beforeEach(() => {
     tenants.findByConnectToken.mockReset();
-    baileys.startSession.mockReset();
+    baileys.beginPairing.mockReset();
+    baileys.endPairing.mockReset();
     baileys.whatsappLink.mockReset();
     dashboard.getToday.mockReset();
   });
@@ -34,29 +36,49 @@ describe('ConnectService', () => {
     await expect(service.link('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
-    expect(baileys.startSession).not.toHaveBeenCalled();
+    expect(baileys.beginPairing).not.toHaveBeenCalled();
   });
 
-  it('starts the session and returns the public link shape', async () => {
+  it('returns the public link without starting a session', async () => {
     tenants.findByConnectToken.mockResolvedValue({
       id: 'tenant-9',
       name: 'Divine Budget',
       linkedPhone: null,
     });
-    baileys.startSession.mockResolvedValue(undefined);
+    baileys.whatsappLink.mockReturnValue({
+      status: null,
+      qrDataUrl: null,
+    });
+
+    await expect(service.link('secret-token')).resolves.toEqual({
+      name: 'Divine Budget',
+      status: null,
+      linkedPhone: null,
+      qrDataUrl: null,
+    });
+    expect(tenants.findByConnectToken).toHaveBeenCalledWith('secret-token');
+    expect(baileys.beginPairing).not.toHaveBeenCalled();
+  });
+
+  it('starts a QR session only when pairing is requested', async () => {
+    tenants.findByConnectToken.mockResolvedValue({
+      id: 'tenant-9',
+      name: 'Divine Budget',
+      linkedPhone: null,
+    });
+    baileys.beginPairing.mockResolvedValue(undefined);
     baileys.whatsappLink.mockReturnValue({
       status: 'waiting_for_scan',
       qrDataUrl: 'data:image/png;base64,abc',
     });
 
-    await expect(service.link('secret-token')).resolves.toEqual({
+    await expect(service.pair('secret-token')).resolves.toEqual({
       name: 'Divine Budget',
       status: 'waiting_for_scan',
       linkedPhone: null,
       qrDataUrl: 'data:image/png;base64,abc',
     });
-    expect(tenants.findByConnectToken).toHaveBeenCalledWith('secret-token');
-    expect(baileys.startSession).toHaveBeenCalledWith('tenant-9');
+    expect(baileys.beginPairing).toHaveBeenCalledWith('tenant-9');
   });
 
   it('loads today only for the tenant behind the token', async () => {

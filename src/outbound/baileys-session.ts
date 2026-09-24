@@ -32,6 +32,19 @@ export function authDirForTenant(
   return join(BAILEYS_SESSIONS_ROOT, tenantId);
 }
 
+/** A saved login has `me.id`. An unlinked folder does not, even after Baileys writes keys. */
+export function credsAreLinked(creds: unknown): boolean {
+  if (typeof creds !== 'object' || creds === null || !('me' in creds)) {
+    return false;
+  }
+  const me = (creds as { me?: unknown }).me;
+  if (typeof me !== 'object' || me === null || !('id' in me)) {
+    return false;
+  }
+  const id = (me as { id?: unknown }).id;
+  return typeof id === 'string' && id.length > 0;
+}
+
 export function visibleQrDataUrl(
   status: BaileysSessionStatus | null,
   qrDataUrl: string | null,

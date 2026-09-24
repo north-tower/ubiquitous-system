@@ -30,14 +30,19 @@ export class ConnectService {
 
   async link(token: string): Promise<ConnectLink> {
     const tenant = await this.requireTenant(token);
-    await this.baileys.startSession(tenant.id);
-    const session = this.baileys.whatsappLink(tenant.id);
-    return {
-      name: tenant.name,
-      status: session.status,
-      linkedPhone: tenant.linkedPhone,
-      qrDataUrl: session.qrDataUrl,
-    };
+    return this.snapshot(tenant);
+  }
+
+  async pair(token: string): Promise<ConnectLink> {
+    const tenant = await this.requireTenant(token);
+    await this.baileys.beginPairing(tenant.id);
+    return this.snapshot(tenant);
+  }
+
+  async stopPair(token: string): Promise<ConnectLink> {
+    const tenant = await this.requireTenant(token);
+    await this.baileys.endPairing(tenant.id);
+    return this.snapshot(tenant);
   }
 
   async today(token: string): Promise<DashboardToday> {
@@ -66,6 +71,16 @@ export class ConnectService {
   async conversation(token: string, id: string): Promise<ConversationDetail> {
     const tenant = await this.requireTenant(token);
     return this.dashboard.getConversation(tenant.id, id);
+  }
+
+  private snapshot(tenant: Tenant): ConnectLink {
+    const session = this.baileys.whatsappLink(tenant.id);
+    return {
+      name: tenant.name,
+      status: session.status,
+      linkedPhone: tenant.linkedPhone,
+      qrDataUrl: session.qrDataUrl,
+    };
   }
 
   private async requireTenant(token: string): Promise<Tenant> {

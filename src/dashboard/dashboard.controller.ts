@@ -51,6 +51,16 @@ export class DashboardController {
     return this.tenantLinks.whatsapp(id);
   }
 
+  @Post('tenants/:id/whatsapp/pair')
+  pairTenant(@Param('id') id: string): Promise<DashboardTenantWhatsapp> {
+    return this.tenantLinks.pair(id);
+  }
+
+  @Post('tenants/:id/whatsapp/pair/stop')
+  stopTenantPair(@Param('id') id: string): Promise<DashboardTenantWhatsapp> {
+    return this.tenantLinks.stopPair(id);
+  }
+
   @Get('today')
   async today(@Query('tenantId') tenantId?: string): Promise<DashboardToday> {
     const resolved = await this.dashboard.resolveTenantId(tenantId);
