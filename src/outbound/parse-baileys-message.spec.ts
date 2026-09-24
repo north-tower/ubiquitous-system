@@ -66,12 +66,32 @@ describe('parseBaileysTextMessage', () => {
     ).toBeNull();
   });
 
-  it('ignores a lid chat that has no phone number', () => {
+  it('accepts a lid chat when no phone jid is present yet', () => {
     expect(
       parseBaileysTextMessage({
         key: { remoteJid: '999000111@lid' },
         message: { conversation: 'hello' },
       }),
-    ).toBeNull();
+    ).toEqual({
+      phoneNumber: 'lid:999000111',
+      text: 'hello',
+      jid: '999000111@lid',
+    });
+  });
+
+  it('uses participantAlt when the chat id is a lid', () => {
+    expect(
+      parseBaileysTextMessage({
+        key: {
+          remoteJid: '999000111@lid',
+          participantAlt: '254712345678@s.whatsapp.net',
+        },
+        message: { conversation: 'hello' },
+      }),
+    ).toEqual({
+      phoneNumber: '254712345678',
+      text: 'hello',
+      jid: '999000111@lid',
+    });
   });
 });

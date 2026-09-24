@@ -1,8 +1,16 @@
+import {
+  isWhatsappLidJid,
+  lidProspectKeyFromJid,
+  phoneDigitsFromJid,
+} from './baileys-lid';
+
 export type BaileysInboundMessage = {
   key?: {
     fromMe?: boolean | null;
     remoteJid?: string | null;
     remoteJidAlt?: string | null;
+    participant?: string | null;
+    participantAlt?: string | null;
   } | null;
   message?: {
     conversation?: string | null;
@@ -41,29 +49,44 @@ export function parseBaileysTextMessage(
     return null;
   }
 
-  const phoneJid = phoneJidFrom(remoteJid, message.key?.remoteJidAlt ?? '');
-  const phoneNumber = phoneJid ? jidUser(phoneJid).replace(/[^\d]/g, '') : '';
-  if (!phoneNumber) {
-    return null;
+  const phoneJid = phoneJidFrom(
+    remoteJid,
+    message.key?.remoteJidAlt,
+    message.key?.participant,
+    message.key?.participantAlt,
+  );
+  const phoneNumber = phoneJid ? phoneDigitsFromJid(phoneJid) : '';
+  if (phoneNumber) {
+    return { phoneNumber, text, jid: remoteJid };
   }
 
-  return { phoneNumber, text, jid: remoteJid };
+  if (isWhatsappLidJid(remoteJid)) {
+    return {
+      phoneNumber: lidProspectKeyFromJid(remoteJid),
+      text,
+      jid: remoteJid,
+    };
+  }
+
+  return null;
 }
 
 function phoneJidFrom(
   remoteJid: string,
   remoteJidAlt: string | null | undefined,
+  participant: string | null | undefined,
+  participantAlt: string | null | undefined,
 ): string | null {
-  if (remoteJid.endsWith('@s.whatsapp.net')) {
-    return remoteJid;
-  }
-  const alt = remoteJidAlt?.trim() ?? '';
-  if (alt.endsWith('@s.whatsapp.net')) {
-    return alt;
+  for (const candidate of [
+    remoteJid,
+    remoteJidAlt,
+    participant,
+    participantAlt,
+  ]) {
+    const jid = candidate?.trim() ?? '';
+    if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@hosted')) {
+      return jid;
+    }
   }
   return null;
-}
-
-function jidUser(jid: string): string {
-  return jid.split('@')[0]?.split(':')[0] ?? '';
 }

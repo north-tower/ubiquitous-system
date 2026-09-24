@@ -20,6 +20,11 @@ import {
 } from './baileys-session';
 import { toDigits, type WhatsappSender } from './whatsapp-channel';
 import {
+  isLidProspectKey,
+  LID_PROSPECT_PREFIX,
+  phoneDigitsFromJid,
+} from './baileys-lid';
+import {
   parseBaileysTextMessage,
   type BaileysInboundMessage,
 } from './parse-baileys-message';
@@ -67,6 +72,11 @@ type BaileysSocket = {
   onWhatsApp(
     ...phones: string[]
   ): Promise<{ jid: string; exists: boolean }[] | undefined>;
+  signalRepository?: {
+    lidMapping?: {
+      getPNForLID(lid: string): Promise<string | undefined>;
+    };
+  };
   end(error: Error | undefined): Promise<void>;
 };
 
@@ -253,8 +263,7 @@ export class BaileysWhatsappClient
       );
     }
 
-    const digits = toDigits(to);
-    const jid = await this.resolveJid(session, sock, digits);
+    const jid = await this.resolveJid(session, sock, to);
     const sent = await sock.sendMessage(jid, { text: body });
     return { messageId: sent?.key?.id ?? null, raw: sent ?? null };
   }
@@ -427,8 +436,21 @@ export class BaileysWhatsappClient
   private async resolveJid(
     session: SessionRecord,
     sock: BaileysSocket,
-    digits: string,
+    to: string,
   ): Promise<string> {
+    if (isLidProspectKey(to)) {
+      const remembered = session.jids.get(to);
+      if (remembered) {
+        return remembered;
+      }
+      const user = to.slice(LID_PROSPECT_PREFIX.length);
+      if (user) {
+        return `${user}@lid`;
+      }
+      throw new Error(`Invalid LID recipient ${to}`);
+    }
+
+    const digits = toDigits(to);
     const remembered = session.jids.get(digits);
     if (remembered) {
       return remembered;
@@ -547,16 +569,34 @@ export class BaileysWhatsappClient
     session: SessionRecord,
     messages: BaileysInboundMessage[],
   ): Promise<void> {
+    const sock = session.sock;
     for (const message of messages) {
       const parsed = parseBaileysTextMessage(message);
       if (!parsed || !this.inboundHandler) {
         continue;
       }
-      session.jids.set(parsed.phoneNumber, parsed.jid);
+      let phoneNumber = parsed.phoneNumber;
+      if (isLidProspectKey(phoneNumber) && sock?.signalRepository?.lidMapping) {
+        const pn = await sock.signalRepository.lidMapping.getPNForLID(
+          parsed.jid,
+        );
+        const digits = pn ? phoneDigitsFromJid(pn) : '';
+        if (digits) {
+          phoneNumber = digits;
+        } else {
+          this.logger.debug(
+            `Baileys inbound LID without phone mapping tenant=${session.tenantId} jid=${parsed.jid}`,
+          );
+        }
+      }
+      session.jids.set(phoneNumber, parsed.jid);
+      if (phoneNumber !== parsed.phoneNumber) {
+        session.jids.set(parsed.phoneNumber, parsed.jid);
+      }
       try {
         await this.inboundHandler({
           tenantId: session.tenantId,
-          phoneNumber: parsed.phoneNumber,
+          phoneNumber,
           text: parsed.text,
           raw: message,
         });
