@@ -12,6 +12,7 @@ import { Phase7TenantLinkedPhone20260924120000 } from './migrations/202609241200
 import { Phase8TenantConnectToken20260924130000 } from './migrations/20260924130000-Phase8TenantConnectToken';
 import { Phase9TenantPortalAuth20260924140000 } from './migrations/20260924140000-Phase9TenantPortalAuth';
 import { Phase10TechfindIntake20260924160000 } from './migrations/20260924160000-Phase10TechfindIntake';
+import { Phase11IndustryFlows20260924180000 } from './migrations/20260924180000-Phase11IndustryFlows';
 
 @Module({
   imports: [

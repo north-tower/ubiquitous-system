@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { DemoEngineRegistry } from './demo-engine.registry';
+import { DemoEngineResolver } from './demo-engine.resolver';
 import { DemoInputMeta, DemoStepResult } from './demo-engine.types';
 import { DemoSimulation } from './demo-simulation.entity';
 
@@ -10,15 +10,18 @@ export class DemoSimulationService {
   constructor(
     @InjectRepository(DemoSimulation)
     private readonly simulations: Repository<DemoSimulation>,
-    private readonly registry: DemoEngineRegistry,
+    private readonly engines: DemoEngineResolver,
   ) {}
 
   async start(
     conversationId: string,
     demoMode: string,
-    options?: { initialPayload?: Record<string, unknown> },
+    options?: {
+      initialPayload?: Record<string, unknown>;
+      tenantId?: string;
+    },
   ): Promise<{ simulation: DemoSimulation; result: DemoStepResult }> {
-    const engine = this.registry.get(demoMode);
+    const engine = await this.engines.resolve(demoMode, options?.tenantId);
     const created = await this.simulations.save(
       this.simulations.create({
         conversationId,
@@ -40,7 +43,10 @@ export class DemoSimulationService {
     userText: string,
     meta?: DemoInputMeta,
   ): Promise<{ simulation: DemoSimulation; result: DemoStepResult }> {
-    const engine = this.registry.get(simulation.demoMode);
+    const engine = await this.engines.resolve(
+      simulation.demoMode,
+      meta?.tenantId,
+    );
     const result = await engine.handleInput(simulation, userText, meta);
     return {
       simulation: await this.applyResult(simulation, result),

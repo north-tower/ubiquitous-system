@@ -3,10 +3,14 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { IndustryFlowService } from '../industry-flow/industry-flow.service';
+import { parseUpsertIndustryFlow } from '../industry-flow/industry-flow.validation';
+import type { IndustryFlowRecord } from '../industry-flow/industry-flow.types';
 import { DashboardBasicAuthGuard } from './dashboard-basic-auth.guard';
 import { DashboardTenantService } from './dashboard-tenant.service';
 import { DashboardService } from './dashboard.service';

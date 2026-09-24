@@ -18,11 +18,17 @@ export class DemoEngineRegistry {
     }
   }
 
-  get(demoMode: string): DemoEngine {
+  /** Built-in TypeScript engines (salon, solar, legacy script modes). */
+  getBuiltin(demoMode: string): DemoEngine {
     const engine = this.engines.get(demoMode);
     if (!engine) {
       throw new UnknownDemoModeError(demoMode);
     }
     return engine;
+  }
+
+  /** @deprecated Prefer DemoEngineResolver.resolve for tenant-aware flows. */
+  get(demoMode: string): DemoEngine {
+    return this.getBuiltin(demoMode);
   }
 }

@@ -13,6 +13,7 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardRepository } from './dashboard.repository';
 import { DashboardService } from './dashboard.service';
 import { DashboardTenantService } from './dashboard-tenant.service';
+import { IndustryFlowModule } from '../industry-flow/industry-flow.module';
 import { PortalModule } from '../portal/portal.module';
 
 @Module({

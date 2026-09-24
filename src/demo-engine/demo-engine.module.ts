@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiClientModule } from '../ai-orchestrator/ai-client.module';
+import { IndustryFlowModule } from '../industry-flow/industry-flow.module';
 import { DemoEngineRegistry } from './demo-engine.registry';
+import { DemoEngineResolver } from './demo-engine.resolver';
 import { DemoSimulation } from './demo-simulation.entity';
 import { DemoSimulationService } from './demo-simulation.service';
 import { SalonDemoEngine } from './salon/salon-demo.engine';
