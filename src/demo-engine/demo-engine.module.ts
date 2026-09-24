@@ -10,13 +10,18 @@ import { SalonDemoEngine } from './salon/salon-demo.engine';
 import { SolarDemoEngine } from './solar/solar-demo.engine';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DemoSimulation]), AiClientModule],
+  imports: [
+    TypeOrmModule.forFeature([DemoSimulation]),
+    AiClientModule,
+    IndustryFlowModule,
+  ],
   providers: [
     SalonDemoEngine,
     SolarDemoEngine,
     DemoEngineRegistry,
+    DemoEngineResolver,
     DemoSimulationService,
   ],
-  exports: [DemoEngineRegistry, DemoSimulationService],
+  exports: [DemoEngineRegistry, DemoEngineResolver, DemoSimulationService],
 })
 export class DemoEngineModule {}

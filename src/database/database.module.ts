@@ -37,6 +37,7 @@ import { Phase11IndustryFlows20260924180000 } from './migrations/20260924180000-
           Phase8TenantConnectToken20260924130000,
           Phase9TenantPortalAuth20260924140000,
           Phase10TechfindIntake20260924160000,
+          Phase11IndustryFlows20260924180000,
         ],
         logging: config.get<string>('TYPEORM_LOGGING') === 'true',
       }),

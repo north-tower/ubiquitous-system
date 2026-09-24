@@ -1,24 +1,32 @@
 import { DEMO_DISCLAIMER } from '../demo-engine/demo-copy';
 import { formatNumberedOptions as formatMenu } from '../enquiry-flow/match-numbered-option';
 import { PLAAGG_FINISH_OPTIONS } from './plaagg-finish-options';
+import type { NumberedOption } from '../enquiry-flow/match-numbered-option';
 import { PLAAGG_INDUSTRY_OPTIONS } from './plaagg-industry-options';
-import { recommendedPlaaggPlan } from './plaagg-simulated-insights';
 import type { PlaaggInsightContext } from './plaagg-simulated-insights';
 
 export { DEMO_DISCLAIMER };
 
-export const PLAAGG_INDUSTRY_MENU = [
-  '*Explore PLAAGG* — pick an industry to play through as a customer.',
-  'All data below is simulated.',
-  '',
-  formatMenu(PLAAGG_INDUSTRY_OPTIONS),
-].join('\n');
+export function plaaggIndustryMenu(options: readonly NumberedOption[]): string {
+  return [
+    '*Explore PLAAGG* — pick an industry to play through as a customer.',
+    'All data below is simulated.',
+    '',
+    formatMenu(options),
+  ].join('\n');
+}
 
-export const REASK_PLAAGG_INDUSTRY = [
-  "Pick a number from the list, or type an industry name.",
-  '',
-  formatMenu(PLAAGG_INDUSTRY_OPTIONS),
-].join('\n');
+export function reaskPlaaggIndustry(options: readonly NumberedOption[]): string {
+  return [
+    'Pick a number from the list, or type an industry name.',
+    '',
+    formatMenu(options),
+  ].join('\n');
+}
+
+export const PLAAGG_INDUSTRY_MENU = plaaggIndustryMenu(PLAAGG_INDUSTRY_OPTIONS);
+
+export const REASK_PLAAGG_INDUSTRY = reaskPlaaggIndustry(PLAAGG_INDUSTRY_OPTIONS);
 
 export const ASK_OTHER_INDUSTRY =
   'Which industry should we simulate? (A few words is fine.)';
@@ -59,11 +67,11 @@ export const PLAAGG_FINISH_MENU = [
   formatMenu(PLAAGG_FINISH_OPTIONS),
 ].join('\n');
 
-export function plaaggRecommendedPlanReply(
-  industryId: string,
-  industryLabel: string,
-): string {
-  const plan = recommendedPlaaggPlan(industryId, industryLabel);
+export function plaaggRecommendedPlanReply(plan: {
+  name: string;
+  summary: string;
+  modules: string[];
+}): string {
   return [
     `*Recommended PLAAGG plan (simulated):* ${plan.name}`,
     plan.summary,
@@ -82,8 +90,10 @@ export const PLAAGG_BOOK_DEMO_REPLY = [
   PLAAGG_FINISH_MENU,
 ].join('\n');
 
-export const PLAAGG_TRY_ANOTHER = [
-  'Sure — pick another industry to explore.',
-  '',
-  formatMenu(PLAAGG_INDUSTRY_OPTIONS),
-].join('\n');
+export function plaaggTryAnother(options: readonly NumberedOption[]): string {
+  return [
+    'Sure — pick another industry to explore.',
+    '',
+    formatMenu(options),
+  ].join('\n');
+}

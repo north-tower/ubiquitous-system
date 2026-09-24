@@ -20,6 +20,10 @@ export class IndustryFlowSeedService implements OnModuleInit {
     if (tenant.flow !== 'techfind_demo') {
       return;
     }
+    const existing = await this.flows.listForTenant(tenant.id);
+    if (existing.length > 0) {
+      return;
+    }
     for (const defaults of DEFAULT_INDUSTRY_FLOWS) {
       await this.flows.upsertByDemoMode(tenant.id, defaults);
     }

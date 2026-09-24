@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DemoEngineModule } from '../demo-engine/demo-engine.module';
+import { IndustryFlowModule } from '../industry-flow/industry-flow.module';
 import { LeadModule } from '../lead/lead.module';
 import { StateMachineModule } from '../state-machine/state-machine.module';
 import { TechfindIntakeFlowService } from './techfind-intake-flow.service';
@@ -13,6 +14,7 @@ import { TechfindIntakeSessionService } from './techfind-intake-session.service'
     StateMachineModule,
     LeadModule,
     DemoEngineModule,
+    IndustryFlowModule,
   ],
   providers: [TechfindIntakeSessionService, TechfindIntakeFlowService],
   exports: [TechfindIntakeFlowService],

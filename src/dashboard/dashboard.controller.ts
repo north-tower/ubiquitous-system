@@ -37,6 +37,7 @@ export class DashboardController {
   constructor(
     private readonly dashboard: DashboardService,
     private readonly tenantLinks: DashboardTenantService,
+    private readonly industryFlows: IndustryFlowService,
   ) {}
 
   @Post('tenants')
@@ -149,5 +150,45 @@ export class DashboardController {
   ): Promise<DemoAnalyticsRow[]> {
     const resolved = await this.dashboard.resolveTenantId(tenantId);
     return this.dashboard.getDemoAnalytics(resolved);
+  }
+
+  @Get('tenants/:tenantId/industry-flows')
+  async listIndustryFlows(
+    @Param('tenantId') tenantId: string,
+  ): Promise<IndustryFlowRecord[]> {
+    await this.tenantLinks.requireTenantForDashboard(tenantId);
+    return this.industryFlows.listForTenant(tenantId);
+  }
+
+  @Get('tenants/:tenantId/industry-flows/:flowId')
+  async getIndustryFlow(
+    @Param('tenantId') tenantId: string,
+    @Param('flowId') flowId: string,
+  ): Promise<IndustryFlowRecord> {
+    await this.tenantLinks.requireTenantForDashboard(tenantId);
+    return this.industryFlows.findById(tenantId, flowId);
+  }
+
+  @Post('tenants/:tenantId/industry-flows')
+  async createIndustryFlow(
+    @Param('tenantId') tenantId: string,
+    @Body() body: unknown,
+  ): Promise<IndustryFlowRecord> {
+    await this.tenantLinks.requireTenantForDashboard(tenantId);
+    return this.industryFlows.create(tenantId, parseUpsertIndustryFlow(body));
+  }
+
+  @Patch('tenants/:tenantId/industry-flows/:flowId')
+  async updateIndustryFlow(
+    @Param('tenantId') tenantId: string,
+    @Param('flowId') flowId: string,
+    @Body() body: unknown,
+  ): Promise<IndustryFlowRecord> {
+    await this.tenantLinks.requireTenantForDashboard(tenantId);
+    return this.industryFlows.update(
+      tenantId,
+      flowId,
+      parseUpsertIndustryFlow(body),
+    );
   }
 }

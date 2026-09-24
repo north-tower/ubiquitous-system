@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Conversation } from '../conversation/conversation.entity';
 import { DemoSimulationService } from '../demo-engine/demo-simulation.service';
+import { IndustryFlowService } from '../industry-flow/industry-flow.service';
+import type { IndustryFlowRecord } from '../industry-flow/industry-flow.types';
 import { isLikelyPersonName } from '../enquiry-flow/is-person-name';
 import {
   matchNumberedOption,
@@ -18,11 +20,8 @@ import * as plaaggCopy from './plaagg-copy';
 import { PLAAGG_FINISH_OPTIONS } from './plaagg-finish-options';
 import {
   PLAAGG_INDUSTRY_OPTIONS,
-  plaaggIndustryLabel,
-  plaaggIndustryToDemoMode,
   type PlaaggIndustryId,
 } from './plaagg-industry-options';
-import { buildPlaaggInsightContext } from './plaagg-simulated-insights';
 import * as copy from './techfind-intake-copy';
 import type { TechfindIntakePayload } from './techfind-intake-payload';
 import { TECHFIND_INTAKE_STEPS } from './techfind-intake-steps';
@@ -39,7 +38,6 @@ export type TechfindIntakeReply = {
 };
 
 const MENU_OPTIONS: readonly NumberedOption[] = TECHFIND_MENU_OPTIONS;
-const PLAAGG_OPTIONS: readonly NumberedOption[] = PLAAGG_INDUSTRY_OPTIONS;
 const FINISH_OPTIONS: readonly NumberedOption[] = PLAAGG_FINISH_OPTIONS;
 
 @Injectable()
@@ -52,6 +50,7 @@ export class TechfindIntakeFlowService {
     private readonly leadProfiles: LeadProfileService,
     private readonly scoring: LeadScoringService,
     private readonly demos: DemoSimulationService,
+    private readonly industryFlows: IndustryFlowService,
     private readonly config: ConfigService,
   ) {}
 
@@ -219,8 +218,9 @@ export class TechfindIntakeFlowService {
         step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_INDUSTRY,
         payload,
       });
+      const menu = await this.plaaggMenuOptions(conversation.tenantId);
       return {
-        replyText: `${copy.LEAD_SAVED}\n\n${plaaggCopy.PLAAGG_INDUSTRY_MENU}`,
+        replyText: `${copy.LEAD_SAVED}\n\n${plaaggCopy.plaaggIndustryMenu(menu)}`,
       };
     }
 
@@ -240,15 +240,20 @@ export class TechfindIntakeFlowService {
     session: TechfindIntakeSession,
     text: string,
   ): Promise<TechfindIntakeReply> {
-    const matched = matchNumberedOption(text, PLAAGG_OPTIONS);
+    const menu = await this.plaaggMenuOptions(conversation.tenantId);
+    const matched = matchNumberedOption(text, menu);
     if (!matched) {
-      return { replyText: plaaggCopy.REASK_PLAAGG_INDUSTRY };
+      return { replyText: plaaggCopy.reaskPlaaggIndustry(menu) };
     }
     const industryId = matched.id as PlaaggIndustryId;
+    const flow = await this.industryFlows.findByPlaaggMenuId(
+      conversation.tenantId,
+      industryId,
+    );
     const payload: TechfindIntakePayload = {
       ...session.payload,
       plaaggIndustryId: industryId,
-      plaaggIndustryLabel: plaaggIndustryLabel(industryId),
+      plaaggIndustryLabel: flow?.menuLabel ?? matched.label,
     };
     if (industryId === 'other') {
       await this.sessions.save(session, {
@@ -283,16 +288,18 @@ export class TechfindIntakeFlowService {
     payload: TechfindIntakePayload,
   ): Promise<TechfindIntakeReply> {
     const industryId = payload.plaaggIndustryId ?? 'other';
-    const demoMode = plaaggIndustryToDemoMode(
+    const flow = await this.industryFlows.findByPlaaggMenuId(
+      conversation.tenantId,
       industryId,
-      payload.plaaggOtherLabel,
     );
+    const demoMode = flow?.demoMode ?? 'generic';
 
     await this.demos.closeOpen(conversation.id);
     await this.walkToDemoRunning(conversation, demoMode);
 
     const { result } = await this.demos.start(conversation.id, demoMode, {
       initialPayload: { plaaggExplore: true },
+      tenantId: conversation.tenantId,
     });
 
     await this.sessions.save(session, {
@@ -316,7 +323,10 @@ export class TechfindIntakeFlowService {
       const started = await this.demos.start(
         conversation.id,
         session.payload.plaaggDemoMode,
-        { initialPayload: { plaaggExplore: true } },
+        {
+          initialPayload: { plaaggExplore: true },
+          tenantId: conversation.tenantId,
+        },
       );
       simulation = started.simulation;
       if (session.currentStep !== TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_DEMO) {
@@ -342,17 +352,17 @@ export class TechfindIntakeFlowService {
       'Simulated customer journey completed';
 
     const industryId = session.payload.plaaggIndustryId ?? 'generic';
-    const industryLabel =
-      session.payload.plaaggIndustryLabel ??
-      plaaggIndustryLabel(industryId, session.payload.plaaggOtherLabel);
-
-    const insight = buildPlaaggInsightContext({
+    const flow = await this.industryFlows.findByPlaaggMenuId(
+      conversation.tenantId,
       industryId,
-      industryLabel,
-      contactName: session.payload.contactName ?? 'Prospect',
-      businessName: session.payload.businessName ?? 'Business',
-      demoSummaryLine: summaryLine.slice(0, 120),
-    });
+    );
+    const industryLabel =
+      session.payload.plaaggOtherLabel?.trim() ||
+      session.payload.plaaggIndustryLabel ||
+      flow?.menuLabel ||
+      industryId;
+
+    const insight = this.buildInsight(session, flow, industryLabel, summaryLine);
 
     await this.sessions.save(session, {
       step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_FINISH,
@@ -382,9 +392,10 @@ export class TechfindIntakeFlowService {
     }
 
     const industryId = session.payload.plaaggIndustryId ?? 'generic';
-    const industryLabel =
-      session.payload.plaaggIndustryLabel ??
-      plaaggIndustryLabel(industryId, session.payload.plaaggOtherLabel);
+    const flow = await this.industryFlows.findByPlaaggMenuId(
+      conversation.tenantId,
+      industryId,
+    );
 
     switch (matched.id) {
       case 'book_demo':
@@ -408,12 +419,18 @@ export class TechfindIntakeFlowService {
             plaaggLastDemoSummary: undefined,
           },
         });
-        return { replyText: plaaggCopy.PLAAGG_TRY_ANOTHER };
+        return {
+          replyText: plaaggCopy.plaaggTryAnother(
+            await this.plaaggMenuOptions(conversation.tenantId),
+          ),
+        };
       case 'recommended_plan':
+        if (!flow) {
+          return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+        }
         return {
           replyText: plaaggCopy.plaaggRecommendedPlanReply(
-            industryId,
-            industryLabel,
+            flow.definition.recommendedPlan,
           ),
         };
       default:
@@ -555,6 +572,34 @@ export class TechfindIntakeFlowService {
   private websiteUrl(): string {
     const configured = this.config.get<string>('TECHFIND_WEBSITE_URL')?.trim();
     return configured || 'https://techfindconsulting.africa';
+  }
+
+  private async plaaggMenuOptions(
+    tenantId: string,
+  ): Promise<readonly NumberedOption[]> {
+    const options = await this.industryFlows.listActivePlaaggMenu(tenantId);
+    return options.length > 0 ? options : PLAAGG_INDUSTRY_OPTIONS;
+  }
+
+  private buildInsight(
+    session: TechfindIntakeSession,
+    flow: IndustryFlowRecord | null,
+    industryLabel: string,
+    summaryLine: string,
+  ) {
+    const insights = flow?.definition.plaaggInsights;
+    return {
+      industryLabel,
+      contactName: session.payload.contactName ?? 'Prospect',
+      businessName: session.payload.businessName ?? 'Business',
+      capturedDetail: summaryLine.slice(0, 120),
+      pipelineStage:
+        insights?.pipelineStage ?? 'New WhatsApp lead (simulated)',
+      followUp: insights?.followUp ?? 'Review enquiry and respond',
+      assignee: insights?.assignee ?? 'Simulated: Unassigned queue',
+      dashboardInsight:
+        insights?.dashboardInsight ?? 'Demo analytics only — not live data.',
+    };
   }
 
   private async handover(conversation: Conversation): Promise<TechfindIntakeReply> {

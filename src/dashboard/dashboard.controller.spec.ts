@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConversationState } from '../state-machine/conversation-state.enum';
+import { IndustryFlowService } from '../industry-flow/industry-flow.service';
 import { DashboardBasicAuthGuard } from './dashboard-basic-auth.guard';
 import { DashboardTenantService } from './dashboard-tenant.service';
 import { DashboardController } from './dashboard.controller';
@@ -17,6 +18,13 @@ describe('DashboardController conversations/:id', () => {
     create: jest.fn(),
     list: jest.fn(),
     whatsapp: jest.fn(),
+    requireTenantForDashboard: jest.fn(),
+  };
+  const industryFlows = {
+    listForTenant: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -29,6 +37,7 @@ describe('DashboardController conversations/:id', () => {
       providers: [
         { provide: DashboardService, useValue: dashboard },
         { provide: DashboardTenantService, useValue: tenantLinks },
+        { provide: IndustryFlowService, useValue: industryFlows },
       ],
     })
       .overrideGuard(DashboardBasicAuthGuard)

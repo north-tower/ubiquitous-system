@@ -111,6 +111,10 @@ export class DashboardTenantService {
     };
   }
 
+  async requireTenantForDashboard(id: string) {
+    return this.requireTenant(id);
+  }
+
   private async requireTenant(id: string) {
     const tenant = await this.tenants.findById(id);
     if (!tenant) {

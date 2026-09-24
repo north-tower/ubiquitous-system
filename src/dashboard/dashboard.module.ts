@@ -19,6 +19,7 @@ import { PortalModule } from '../portal/portal.module';
 @Module({
   imports: [
     forwardRef(() => PortalModule),
+    IndustryFlowModule,
     TenantModule,
     StateMachineModule,
     OutboundModule,

@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Conversation } from '../conversation/conversation.entity';
 import { DemoSimulationService } from '../demo-engine/demo-simulation.service';
+import { IndustryFlowService } from '../industry-flow/industry-flow.service';
 import { LeadProfileService } from '../lead/lead-profile.service';
 import { LeadScoringService } from '../lead/lead-scoring.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
@@ -63,6 +64,10 @@ describe('TechfindIntakeFlowService', () => {
     findActive: jest.fn(),
     closeOpen: jest.fn(),
   };
+  const industryFlows = {
+    listActivePlaaggMenu: jest.fn(),
+    findByPlaaggMenuId: jest.fn(),
+  };
 
   function createService(): TechfindIntakeFlowService {
     return new TechfindIntakeFlowService(
@@ -71,6 +76,7 @@ describe('TechfindIntakeFlowService', () => {
       leadProfiles as unknown as LeadProfileService,
       scoring,
       demos as unknown as DemoSimulationService,
+      industryFlows as unknown as IndustryFlowService,
       config as unknown as ConfigService,
     );
   }
@@ -113,6 +119,8 @@ describe('TechfindIntakeFlowService', () => {
     config.get.mockReturnValue(undefined);
     demos.closeOpen.mockResolvedValue(undefined);
     demos.findActive.mockResolvedValue(null);
+    industryFlows.listActivePlaaggMenu.mockResolvedValue([]);
+    industryFlows.findByPlaaggMenuId.mockResolvedValue(null);
   });
 
   it('opens with the Techfind service menu', async () => {
@@ -171,6 +179,9 @@ describe('TechfindIntakeFlowService', () => {
   });
 
   it('opens the PLAAGG industry menu after plaagg qualification', async () => {
+    industryFlows.listActivePlaaggMenu.mockResolvedValue([
+      { id: 'solar', label: 'Solar', aliases: [] },
+    ]);
     sessions.findActive.mockResolvedValue(
       session({
         currentStep: TECHFIND_INTAKE_STEPS.AWAITING_QUALIFICATION,
@@ -183,7 +194,10 @@ describe('TechfindIntakeFlowService', () => {
     );
 
     const reply = await createService().handleInbound(
-      conversation({ currentState: ConversationState.TECHFIND_GREETING }),
+      conversation({
+        currentState: ConversationState.TECHFIND_GREETING,
+        tenantId: 'tenant-1',
+      }),
       'Want to see solar and salon demos',
     );
 
@@ -221,6 +235,31 @@ describe('TechfindIntakeFlowService', () => {
       completedAt: null,
       createdAt: new Date(),
     });
+    industryFlows.findByPlaaggMenuId.mockResolvedValue({
+      id: 'flow-1',
+      tenantId: 'tenant-1',
+      demoMode: 'dental',
+      menuLabel: 'Dental',
+      plaaggMenuId: 'dental',
+      sortOrder: 30,
+      isActive: true,
+      engineKind: 'script',
+      definition: {
+        plaaggInsights: {
+          pipelineStage: 'New patient enquiry',
+          followUp: 'Offer cleaning bundle',
+          assignee: 'Simulated: Coordinator',
+          dashboardInsight: 'Demo insight',
+        },
+        recommendedPlan: {
+          name: 'PLAAGG Care',
+          summary: 'Dental plan',
+          modules: ['Intake'],
+        },
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     demos.handleInput.mockResolvedValue({
       result: {
         replyText: 'Simulated dental enquiry logged',
@@ -231,7 +270,10 @@ describe('TechfindIntakeFlowService', () => {
     });
 
     const reply = await createService().handleInbound(
-      conversation({ currentState: ConversationState.DEMO_RUNNING }),
+      conversation({
+        currentState: ConversationState.DEMO_RUNNING,
+        tenantId: 'tenant-1',
+      }),
       'Weekend',
     );
 
