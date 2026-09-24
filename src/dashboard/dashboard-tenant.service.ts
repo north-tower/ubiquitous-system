@@ -32,6 +32,7 @@ export class DashboardTenantService {
       flow: tenant.flow,
       linkedPhone: tenant.linkedPhone,
       status: this.baileys.connectionStatus(tenant.id),
+      connectToken: tenant.connectToken,
     }));
   }
 

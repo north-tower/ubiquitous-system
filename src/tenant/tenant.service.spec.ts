@@ -61,9 +61,8 @@ describe('TenantService.createStaffTenant', () => {
     expect(saved.name).toBe('Divine Budget');
     expect(saved.flow).toBe('enquiry_intake');
     expect(saved.linkedPhone).toBeNull();
-    expect(saved.whatsappPhoneNumberId).toMatch(
-      /^baileys:[0-9a-f-]{36}$/i,
-    );
+    expect(saved.connectToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(saved.whatsappPhoneNumberId).toMatch(/^baileys:[0-9a-f-]{36}$/i);
   });
 
   it('rejects a blank name or an unknown flow', async () => {
@@ -74,5 +73,32 @@ describe('TenantService.createStaffTenant', () => {
       service.createStaffTenant({ name: 'Divine', flow: 'other' }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tenants.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('TenantService.ensureConnectTokens', () => {
+  const tenants = {
+    find: jest.fn(),
+    save: jest.fn(async (row: Tenant) => row),
+  };
+  const config = { get: jest.fn() };
+  const service = new TenantService(
+    tenants as unknown as Repository<Tenant>,
+    config as unknown as ConfigService,
+  );
+
+  beforeEach(() => {
+    tenants.find.mockReset();
+    tenants.save.mockClear();
+  });
+
+  it('fills tenants that have no connect token', async () => {
+    const row = { id: 'tenant-1', connectToken: null } as Tenant;
+    tenants.find.mockResolvedValue([row]);
+
+    await service.ensureConnectTokens();
+
+    expect(row.connectToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(tenants.save).toHaveBeenCalledWith(row);
   });
 });

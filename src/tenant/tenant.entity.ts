@@ -53,6 +53,19 @@ export class Tenant {
   })
   linkedPhone: string | null;
 
+  /**
+   * Secret for the public connect page. Not the tenant id, so a business
+   * can open their QR link without the staff dashboard login.
+   */
+  @Column({
+    name: 'connect_token',
+    type: 'varchar',
+    length: 64,
+    unique: true,
+    nullable: true,
+  })
+  connectToken: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

@@ -10,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { DemoEngineModule } from './demo-engine/demo-engine.module';
 import { DivineBudgetModule } from './divine-budget/divine-budget.module';
 import { EnquiryFlowModule } from './enquiry-flow/enquiry-flow.module';
+import { ConnectModule } from './connect/connect.module';
 import { LeadModule } from './lead/lead.module';
 import { OutboundModule } from './outbound/outbound.module';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -30,6 +31,7 @@ import { WhatsappWebhookModule } from './whatsapp-webhook/whatsapp-webhook.modul
     AiOrchestratorModule,
     DivineBudgetModule,
     EnquiryFlowModule,
+    ConnectModule,
     OutboundModule,
     WhatsappWebhookModule,
   ],

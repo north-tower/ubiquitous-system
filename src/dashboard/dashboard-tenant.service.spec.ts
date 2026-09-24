@@ -50,6 +50,7 @@ describe('DashboardTenantService', () => {
         name: 'Techfind Consulting',
         flow: 'techfind_demo',
         linkedPhone: '254700000001',
+        connectToken: 'secret-token',
       },
     ]);
     baileys.connectionStatus.mockReturnValue('connected');
@@ -61,6 +62,7 @@ describe('DashboardTenantService', () => {
         flow: 'techfind_demo',
         linkedPhone: '254700000001',
         status: 'connected',
+        connectToken: 'secret-token',
       },
     ]);
   });

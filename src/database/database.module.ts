@@ -9,6 +9,7 @@ import { Phase4AiUsageEvents20260826040000 } from './migrations/20260826040000-P
 import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Phase5LeadProfiles';
 import { Phase6EnquiryFlow20260918120000 } from './migrations/20260918120000-Phase6EnquiryFlow';
 import { Phase7TenantLinkedPhone20260924120000 } from './migrations/20260924120000-Phase7TenantLinkedPhone';
+import { Phase8TenantConnectToken20260924130000 } from './migrations/20260924130000-Phase8TenantConnectToken';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { Phase7TenantLinkedPhone20260924120000 } from './migrations/202609241200
           Phase5LeadProfiles20260826050000,
           Phase6EnquiryFlow20260918120000,
           Phase7TenantLinkedPhone20260924120000,
+          Phase8TenantConnectToken20260924130000,
         ],
         logging: config.get<string>('TYPEORM_LOGGING') === 'true',
       }),

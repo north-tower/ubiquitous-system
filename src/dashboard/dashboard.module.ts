@@ -30,5 +30,6 @@ import { DashboardTenantService } from './dashboard-tenant.service';
     DashboardTenantService,
     DashboardBasicAuthGuard,
   ],
+  exports: [DashboardService],
 })
 export class DashboardModule {}

@@ -98,6 +98,7 @@ export type DashboardTenantSummary = {
   flow: TenantFlow;
   linkedPhone: string | null;
   status: BaileysSessionStatus | null;
+  connectToken: string | null;
 };
 
 export type DashboardTenantWhatsapp = {

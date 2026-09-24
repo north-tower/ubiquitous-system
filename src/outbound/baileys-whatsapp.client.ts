@@ -477,7 +477,15 @@ export class BaileysWhatsappClient
     ) {
       session.qrDataUrl = dataUrl;
     }
-    await this.printQr(qr, session.tenantId);
+    try {
+      await this.printQr(qr, session.tenantId);
+    } catch (error) {
+      this.logger.error(
+        `Failed to print WhatsApp QR tenant=${session.tenantId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async toQrDataUrl(qr: string): Promise<string | null> {
@@ -499,17 +507,22 @@ export class BaileysWhatsappClient
   }
 
   private async printQr(qr: string, tenantId: string): Promise<void> {
-    const qrcode = (await import('qrcode-terminal')) as {
+    const imported = (await import('qrcode-terminal')) as {
       generate?: (text: string, options?: { small?: boolean }) => void;
       default?: {
         generate: (text: string, options?: { small?: boolean }) => void;
       };
     };
-    const generate = qrcode.generate ?? qrcode.default?.generate;
+    // generate() reads this.error. Calling the unbound function leaves
+    // errorCorrectLevel undefined and qrcode-terminal throws.
+    const qrcode =
+      imported.default && typeof imported.default.generate === 'function'
+        ? imported.default
+        : imported;
     this.logger.log(
       `Scan the QR code below to link WhatsApp tenant=${tenantId}`,
     );
-    generate?.(qr, { small: true });
+    qrcode.generate?.(qr, { small: true });
   }
 }
 

@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { randomBytes, randomUUID } from 'crypto';
+import { IsNull, Repository } from 'typeorm';
 import { Tenant } from './tenant.entity';
 import {
   DEFAULT_TENANT_FLOW,
@@ -31,6 +31,7 @@ export class TenantService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.ensureTechfindTenant();
+    await this.ensureConnectTokens();
   }
 
   async findByWhatsappPhoneNumberId(
@@ -49,6 +50,25 @@ export class TenantService implements OnModuleInit {
 
   async findById(id: string): Promise<Tenant | null> {
     return this.tenants.findOne({ where: { id } });
+  }
+
+  async findByConnectToken(token: string): Promise<Tenant | null> {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      return null;
+    }
+    return this.tenants.findOne({ where: { connectToken: trimmed } });
+  }
+
+  /** Existing rows predate connect links. Fill any that are still blank. */
+  async ensureConnectTokens(): Promise<void> {
+    const missing = await this.tenants.find({
+      where: { connectToken: IsNull() },
+    });
+    for (const tenant of missing) {
+      tenant.connectToken = newConnectToken();
+      await this.tenants.save(tenant);
+    }
   }
 
   async list(): Promise<Tenant[]> {
@@ -79,6 +99,7 @@ export class TenantService implements OnModuleInit {
         whatsappPhoneNumberId: `baileys:${randomUUID()}`,
         whatsappBusinessAccountId: null,
         linkedPhone: null,
+        connectToken: newConnectToken(),
       }),
     );
   }
@@ -127,6 +148,7 @@ export class TenantService implements OnModuleInit {
         whatsappPhoneNumberId,
         whatsappBusinessAccountId,
         flow: flow ?? DEFAULT_TENANT_FLOW,
+        connectToken: newConnectToken(),
       }),
     );
     this.logger.log(`Seeded Techfind tenant id=${saved.id}`);
@@ -171,4 +193,8 @@ export class TenantService implements OnModuleInit {
     }
     return raw;
   }
+}
+
+function newConnectToken(): string {
+  return randomBytes(32).toString('base64url');
 }
