@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation } from '../conversation/conversation.entity';
 import { Message } from '../conversation/message.entity';
@@ -13,9 +13,11 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardRepository } from './dashboard.repository';
 import { DashboardService } from './dashboard.service';
 import { DashboardTenantService } from './dashboard-tenant.service';
+import { PortalModule } from '../portal/portal.module';
 
 @Module({
   imports: [
+    forwardRef(() => PortalModule),
     TenantModule,
     StateMachineModule,
     OutboundModule,

@@ -11,6 +11,7 @@ import { DemoEngineModule } from './demo-engine/demo-engine.module';
 import { DivineBudgetModule } from './divine-budget/divine-budget.module';
 import { EnquiryFlowModule } from './enquiry-flow/enquiry-flow.module';
 import { ConnectModule } from './connect/connect.module';
+import { PortalModule } from './portal/portal.module';
 import { LeadModule } from './lead/lead.module';
 import { OutboundModule } from './outbound/outbound.module';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -32,6 +33,7 @@ import { WhatsappWebhookModule } from './whatsapp-webhook/whatsapp-webhook.modul
     DivineBudgetModule,
     EnquiryFlowModule,
     ConnectModule,
+    PortalModule,
     OutboundModule,
     WhatsappWebhookModule,
   ],

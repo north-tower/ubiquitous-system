@@ -14,6 +14,7 @@ import {
   type ConversationDetail,
   type ConversationListResult,
   type DashboardFunnel,
+  type CreateTenantResult,
   type DashboardTenantSummary,
   type DashboardTenantWhatsapp,
   type DashboardToday,
@@ -36,9 +37,26 @@ export class DashboardController {
 
   @Post('tenants')
   createTenant(
-    @Body() body: { name?: unknown; flow?: unknown },
-  ): Promise<{ id: string }> {
+    @Body()
+    body: {
+      name?: unknown;
+      flow?: unknown;
+      email?: unknown;
+      firstName?: unknown;
+      lastName?: unknown;
+      appUrl?: unknown;
+    },
+  ): Promise<CreateTenantResult> {
     return this.tenantLinks.create(body ?? {});
+  }
+
+  @Post('tenants/:id/resend-onboarding')
+  resendTenantOnboarding(
+    @Param('id') id: string,
+    @Body() body: { appUrl?: unknown },
+  ): Promise<NonNullable<CreateTenantResult['onboarding']>> {
+    const appUrl = typeof body?.appUrl === 'string' ? body.appUrl : undefined;
+    return this.tenantLinks.resendOnboarding(id, appUrl);
   }
 
   @Get('tenants')

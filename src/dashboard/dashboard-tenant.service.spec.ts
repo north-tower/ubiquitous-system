@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
+import { PortalOnboardingService } from '../portal/portal-onboarding.service';
 import { Tenant } from '../tenant/tenant.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { DashboardTenantService } from './dashboard-tenant.service';
@@ -16,9 +17,15 @@ describe('DashboardTenantService', () => {
     connectionStatus: jest.fn(),
     whatsappLink: jest.fn(),
   };
+  const onboarding = {
+    inviteOwnerForTenant: jest.fn(),
+    findOwnerByTenantId: jest.fn(),
+    resendForTenant: jest.fn(),
+  };
   const service = new DashboardTenantService(
     tenants as unknown as TenantService,
     baileys as unknown as BaileysWhatsappClient,
+    onboarding as unknown as PortalOnboardingService,
   );
 
   beforeEach(() => {
@@ -29,19 +36,56 @@ describe('DashboardTenantService', () => {
     baileys.endPairing.mockReset();
     baileys.connectionStatus.mockReset();
     baileys.whatsappLink.mockReset();
+    onboarding.inviteOwnerForTenant.mockReset();
+    onboarding.findOwnerByTenantId.mockReset();
+    onboarding.resendForTenant.mockReset();
   });
 
   it('creates a tenant without opening a WhatsApp session', async () => {
-    tenants.createStaffTenant.mockResolvedValue({ id: 'tenant-9' });
+    tenants.createStaffTenant.mockResolvedValue({
+      id: 'tenant-9',
+      connectToken: 'tok',
+    });
 
     await expect(
       service.create({ name: 'Divine Budget', flow: 'enquiry_intake' }),
-    ).resolves.toEqual({ id: 'tenant-9' });
+    ).resolves.toEqual({ id: 'tenant-9', connectToken: 'tok' });
     expect(tenants.createStaffTenant).toHaveBeenCalledWith({
       name: 'Divine Budget',
       flow: 'enquiry_intake',
     });
     expect(baileys.beginPairing).not.toHaveBeenCalled();
+    expect(onboarding.inviteOwnerForTenant).not.toHaveBeenCalled();
+  });
+
+  it('emails the owner when contact details are provided', async () => {
+    tenants.createStaffTenant.mockResolvedValue({
+      id: 'tenant-9',
+      name: 'Divine Budget',
+      connectToken: 'tok',
+    });
+    onboarding.inviteOwnerForTenant.mockResolvedValue({
+      acceptUrl: 'http://ui/portal/accept-invite/abc',
+      connectUrl: 'http://ui/connect/tok',
+      loginUrl: 'http://ui/portal/login',
+      emailResult: { status: 'sent', providerId: 'mg-1' },
+      tenantUserId: 'user-1',
+    });
+
+    await expect(
+      service.create({
+        name: 'Divine Budget',
+        flow: 'enquiry_intake',
+        email: 'owner@example.com',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        appUrl: 'http://ui',
+      }),
+    ).resolves.toMatchObject({
+      id: 'tenant-9',
+      onboarding: { emailResult: { status: 'sent' } },
+    });
+    expect(onboarding.inviteOwnerForTenant).toHaveBeenCalled();
   });
 
   it('starts a QR session only when pairing is requested', async () => {
@@ -63,7 +107,7 @@ describe('DashboardTenantService', () => {
     expect(baileys.beginPairing).toHaveBeenCalledWith('tenant-9');
   });
 
-  it('lists flow, linked phone, and connection status', async () => {
+  it('lists flow, linked phone, connection status, and owner', async () => {
     tenants.list.mockResolvedValue([
       {
         id: 'tenant-1',
@@ -74,6 +118,10 @@ describe('DashboardTenantService', () => {
       },
     ]);
     baileys.connectionStatus.mockReturnValue('connected');
+    onboarding.findOwnerByTenantId.mockResolvedValue({
+      email: 'owner@example.com',
+      status: 'invited',
+    });
 
     await expect(service.list()).resolves.toEqual([
       {
@@ -83,6 +131,8 @@ describe('DashboardTenantService', () => {
         linkedPhone: '254700000001',
         status: 'connected',
         connectToken: 'secret-token',
+        ownerEmail: 'owner@example.com',
+        ownerStatus: 'invited',
       },
     ]);
   });
