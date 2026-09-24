@@ -4,6 +4,7 @@ import { type LeadScore } from '../lead/lead-profile.entity';
 import { type TenantFlow } from '../tenant/tenant-flow';
 
 export type DashboardToday = {
+  flow: TenantFlow;
   whatsappConversations: number;
   newProspects: number;
   simulationsStarted: number;
@@ -12,6 +13,8 @@ export type DashboardToday = {
   hotLeads: number;
   meetingsBooked: number;
   humanHandoffs: number;
+  enquiriesStarted: number;
+  enquiriesSubmitted: number;
 };
 
 export type FunnelStage = {
@@ -22,6 +25,7 @@ export type FunnelStage = {
 };
 
 export type DashboardFunnel = {
+  flow: TenantFlow;
   stages: FunnelStage[];
 };
 

@@ -52,6 +52,7 @@ describe('ConnectService', () => {
 
     await expect(service.link('secret-token')).resolves.toEqual({
       name: 'Divine Budget',
+      flow: 'techfind_demo',
       status: null,
       linkedPhone: null,
       qrDataUrl: null,
@@ -74,6 +75,7 @@ describe('ConnectService', () => {
 
     await expect(service.pair('secret-token')).resolves.toEqual({
       name: 'Divine Budget',
+      flow: 'techfind_demo',
       status: 'waiting_for_scan',
       linkedPhone: null,
       qrDataUrl: 'data:image/png;base64,abc',

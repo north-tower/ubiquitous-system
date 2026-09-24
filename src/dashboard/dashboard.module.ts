@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation } from '../conversation/conversation.entity';
 import { Message } from '../conversation/message.entity';
 import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
+import { EnquirySession } from '../enquiry-flow/enquiry-session.entity';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { OutboundModule } from '../outbound/outbound.module';
 import { StateMachineModule } from '../state-machine/state-machine.module';
@@ -22,6 +23,7 @@ import { DashboardTenantService } from './dashboard-tenant.service';
       Conversation,
       Message,
       DemoSimulation,
+      EnquirySession,
       LeadProfile,
     ]),
   ],

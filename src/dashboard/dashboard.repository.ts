@@ -4,6 +4,7 @@ import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { Conversation } from '../conversation/conversation.entity';
 import { Message } from '../conversation/message.entity';
 import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
+import { EnquirySession } from '../enquiry-flow/enquiry-session.entity';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { type ConversationListFilters } from './dashboard.types';
 import {
@@ -25,6 +26,8 @@ export class DashboardRepository {
     private readonly simulations: Repository<DemoSimulation>,
     @InjectRepository(LeadProfile)
     private readonly leads: Repository<LeadProfile>,
+    @InjectRepository(EnquirySession)
+    private readonly enquirySessions: Repository<EnquirySession>,
   ) {}
 
   async loadSnapshot(
@@ -39,24 +42,33 @@ export class DashboardRepository {
       return {
         conversations: [],
         simulations: [],
+        enquirySessions: [],
         leads: [],
         recentMessages: [],
       };
     }
 
-    const [simulations, leads, recentMessages] = await Promise.all([
-      this.simulations.find({ where: { conversationId: In(ids) } }),
-      this.leads.find({ where: { conversationId: In(ids) } }),
-      this.messages.find({
-        where: {
-          conversationId: In(ids),
-          createdAt: MoreThanOrEqual(messagesSince),
-        },
-        select: { conversationId: true, createdAt: true, id: true },
-      }),
-    ]);
+    const [simulations, enquirySessions, leads, recentMessages] =
+      await Promise.all([
+        this.simulations.find({ where: { conversationId: In(ids) } }),
+        this.enquirySessions.find({ where: { conversationId: In(ids) } }),
+        this.leads.find({ where: { conversationId: In(ids) } }),
+        this.messages.find({
+          where: {
+            conversationId: In(ids),
+            createdAt: MoreThanOrEqual(messagesSince),
+          },
+          select: { conversationId: true, createdAt: true, id: true },
+        }),
+      ]);
 
-    return { conversations, simulations, leads, recentMessages };
+    return {
+      conversations,
+      simulations,
+      enquirySessions,
+      leads,
+      recentMessages,
+    };
   }
 
   async listConversations(

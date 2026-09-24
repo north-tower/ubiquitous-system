@@ -11,10 +11,12 @@ import {
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { type BaileysSessionStatus } from '../outbound/baileys-session';
 import { Tenant } from '../tenant/tenant.entity';
+import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantService } from '../tenant/tenant.service';
 
 export type ConnectLink = {
   name: string;
+  flow: TenantFlow;
   status: BaileysSessionStatus | null;
   linkedPhone: string | null;
   qrDataUrl: string | null;
@@ -77,6 +79,7 @@ export class ConnectService {
     const session = this.baileys.whatsappLink(tenant.id);
     return {
       name: tenant.name,
+      flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
       status: session.status,
       linkedPhone: tenant.linkedPhone,
       qrDataUrl: session.qrDataUrl,

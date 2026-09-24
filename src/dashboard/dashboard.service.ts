@@ -9,9 +9,10 @@ import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
-import { DEFAULT_TENANT_FLOW } from '../tenant/tenant-flow';
+import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantService } from '../tenant/tenant.service';
 import { DashboardRepository } from './dashboard.repository';
+import { type DashboardSnapshot } from './dashboard.snapshot';
 import {
   type ConversationDetail,
   type ConversationListFilters,
@@ -20,14 +21,19 @@ import {
   type DashboardFunnel,
   type DashboardToday,
   type DemoAnalyticsRow,
-  type FunnelStage,
 } from './dashboard.types';
 import {
   ANALYTICS_DEMO_MODES,
+  ENQUIRY_FUNNEL_LABELS,
+  ENQUIRY_PROGRESS,
   QUALIFIED_STATES,
   SIMULATION_COMPLETED_STATES,
   SIMULATION_STARTED_STATES,
-  conversionPercent,
+  TECHFIND_FUNNEL_LABELS,
+  enquirySessionProgress,
+  isFiledEnquiry,
+  latestByConversationId,
+  toFunnelStages,
 } from './funnel-stages';
 import { startOfDayInTimeZone } from './local-day';
 
@@ -110,7 +116,19 @@ export class DashboardService {
         onOrAfter(conversation.updatedAt, since),
     ).length;
 
+    const flow = await this.tenantFlow(tenantId);
+    const enquiryStarted = snap.enquirySessions.filter((session) =>
+      onOrAfter(session.createdAt, since),
+    ).length;
+    const enquirySubmitted = snap.enquirySessions.filter(
+      (session) =>
+        session.submittedAt !== null &&
+        onOrAfter(session.submittedAt, since) &&
+        isFiledEnquiry(session),
+    ).length;
+
     return {
+      flow,
       whatsappConversations,
       newProspects,
       simulationsStarted,
@@ -119,55 +137,21 @@ export class DashboardService {
       hotLeads: scoredToday.filter((lead) => lead.leadScore === 'HOT').length,
       meetingsBooked,
       humanHandoffs,
+      enquiriesStarted: enquiryStarted,
+      enquiriesSubmitted: enquirySubmitted,
     };
   }
 
   async getFunnel(tenantId: string): Promise<DashboardFunnel> {
+    const flow = await this.tenantFlow(tenantId);
     const snap = await this.repo.loadSnapshot(tenantId, new Date(0));
-    const startedIds = simulationStartedIds(
-      snap.conversations,
-      snap.simulations,
-    );
-
-    const counts = [
-      snap.conversations.length,
-      snap.conversations.filter(
-        (conversation) => conversation.demoMode !== null,
-      ).length,
-      startedIds.size,
-      snap.conversations.filter((conversation) =>
-        SIMULATION_COMPLETED_STATES.has(conversation.currentState),
-      ).length,
-      snap.conversations.filter((conversation) =>
-        QUALIFIED_STATES.has(conversation.currentState),
-      ).length,
-      snap.conversations.filter(
-        (conversation) =>
-          conversation.currentState === ConversationState.MEETING_BOOKED,
-      ).length,
-      0,
-    ];
-
-    const labels = [
-      { key: 'whatsapp', label: 'WhatsApp conversations' },
-      { key: 'business_identified', label: 'Business identified' },
-      { key: 'simulation_started', label: 'Simulation started' },
-      { key: 'simulation_completed', label: 'Simulation completed' },
-      { key: 'qualified', label: 'Qualified' },
-      { key: 'meeting_booked', label: 'Meeting booked' },
-      { key: 'customer', label: 'Customer' },
-    ];
-
-    const stages: FunnelStage[] = labels.map((label, index) => ({
-      ...label,
-      count: counts[index],
-      conversionFromPrevious:
-        index === 0
-          ? null
-          : conversionPercent(counts[index - 1], counts[index]),
-    }));
-
-    return { stages };
+    return {
+      flow,
+      stages:
+        flow === 'enquiry_intake'
+          ? enquiryFunnelStages(snap)
+          : techfindFunnelStages(snap),
+    };
   }
 
   async listConversations(
@@ -275,6 +259,10 @@ export class DashboardService {
   }
 
   async getDemoAnalytics(tenantId: string): Promise<DemoAnalyticsRow[]> {
+    const flow = await this.tenantFlow(tenantId);
+    if (flow === 'enquiry_intake') {
+      return [];
+    }
     const snap = await this.repo.loadSnapshot(tenantId, new Date(0));
     const startedIds = simulationStartedIds(
       snap.conversations,
@@ -312,6 +300,11 @@ export class DashboardService {
       this.config.get<string>('DASHBOARD_TIMEZONE')?.trim() || DEFAULT_TIMEZONE
     );
   }
+
+  private async tenantFlow(tenantId: string): Promise<TenantFlow> {
+    const tenant = await this.tenants.findById(tenantId);
+    return tenant?.flow ?? DEFAULT_TENANT_FLOW;
+  }
 }
 
 function onOrAfter(date: Date, start: Date): boolean {
@@ -326,6 +319,55 @@ function indexById(conversations: Conversation[]): Map<string, Conversation> {
 
 function indexLeads(leads: LeadProfile[]): Map<string, LeadProfile> {
   return new Map(leads.map((lead) => [lead.conversationId, lead]));
+}
+
+function techfindFunnelStages(snap: DashboardSnapshot) {
+  const startedIds = simulationStartedIds(
+    snap.conversations,
+    snap.simulations,
+  );
+  return toFunnelStages(TECHFIND_FUNNEL_LABELS, [
+    snap.conversations.length,
+    snap.conversations.filter(
+      (conversation) => conversation.demoMode !== null,
+    ).length,
+    startedIds.size,
+    snap.conversations.filter((conversation) =>
+      SIMULATION_COMPLETED_STATES.has(conversation.currentState),
+    ).length,
+    snap.conversations.filter((conversation) =>
+      QUALIFIED_STATES.has(conversation.currentState),
+    ).length,
+    snap.conversations.filter(
+      (conversation) =>
+        conversation.currentState === ConversationState.MEETING_BOOKED,
+    ).length,
+    0,
+  ]);
+}
+
+function enquiryFunnelStages(snap: DashboardSnapshot) {
+  const latest = latestByConversationId(snap.enquirySessions);
+  const progress = snap.conversations.map((conversation) => {
+    const session = latest.get(conversation.id);
+    return session ? enquirySessionProgress(session) : 0;
+  });
+  const reached = (threshold: number) =>
+    progress.filter((value) => value >= threshold).length;
+
+  return toFunnelStages(ENQUIRY_FUNNEL_LABELS, [
+    snap.conversations.length,
+    reached(ENQUIRY_PROGRESS.started),
+    reached(ENQUIRY_PROGRESS.eventType),
+    reached(ENQUIRY_PROGRESS.date),
+    reached(ENQUIRY_PROGRESS.services),
+    reached(ENQUIRY_PROGRESS.guests),
+    reached(ENQUIRY_PROGRESS.venue),
+    reached(ENQUIRY_PROGRESS.budget),
+    reached(ENQUIRY_PROGRESS.details),
+    reached(ENQUIRY_PROGRESS.confirm),
+    reached(ENQUIRY_PROGRESS.submitted),
+  ]);
 }
 
 function simulationStartedIds(

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Conversation } from '../conversation/conversation.entity';
 import { Message } from '../conversation/message.entity';
 import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
+import { EnquirySession } from '../enquiry-flow/enquiry-session.entity';
+import { ENQUIRY_STEPS } from '../enquiry-flow/enquiry-steps';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { TenantService } from '../tenant/tenant.service';
@@ -38,6 +40,19 @@ function sim(overrides: Partial<DemoSimulation>): DemoSimulation {
     payload: {},
     createdAt: YESTERDAY,
     completedAt: null,
+    ...overrides,
+  };
+}
+
+function enquiry(overrides: Partial<EnquirySession>): EnquirySession {
+  return {
+    id: 'enq-default',
+    conversationId: 'c-default',
+    currentStep: ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
+    payload: {},
+    createdAt: YESTERDAY,
+    submittedAt: null,
+    reference: null,
     ...overrides,
   };
 }
@@ -200,6 +215,7 @@ function seededFunnel(): DashboardSnapshot {
           conversation.tenantId === TENANT,
       ),
     ),
+    enquirySessions: [],
     leads: leads.filter((row) =>
       conversations.some(
         (conversation) =>
@@ -249,12 +265,14 @@ describe('DashboardService aggregations', () => {
     config.get.mockReset();
     repo.loadSnapshot.mockResolvedValue(snapshot);
     config.get.mockReturnValue('UTC');
-    tenants.findDefault.mockResolvedValue({ id: TENANT });
+    tenants.findDefault.mockResolvedValue({ id: TENANT, flow: 'techfind_demo' });
+    tenants.findById.mockResolvedValue({ id: TENANT, flow: 'techfind_demo' });
   });
 
   it('counts funnel stages from current state without inventing a customer flag', async () => {
     const funnel = await service.getFunnel(TENANT);
 
+    expect(funnel.flow).toBe('techfind_demo');
     expect(funnel.stages.map((stage) => [stage.key, stage.count])).toEqual([
       ['whatsapp', 7],
       ['business_identified', 5],
@@ -277,6 +295,7 @@ describe('DashboardService aggregations', () => {
     const today = await service.getToday(TENANT, NOW);
 
     expect(today).toEqual({
+      flow: 'techfind_demo',
       whatsappConversations: 2,
       newProspects: 1,
       simulationsStarted: 1,
@@ -285,11 +304,123 @@ describe('DashboardService aggregations', () => {
       hotLeads: 1,
       meetingsBooked: 1,
       humanHandoffs: 0,
+      enquiriesStarted: 0,
+      enquiriesSubmitted: 0,
     });
     expect(repo.loadSnapshot).toHaveBeenCalledWith(
       TENANT,
       new Date('2026-08-26T00:00:00.000Z'),
     );
+  });
+
+  it('counts enquiry intake from session steps instead of the Techfind demo funnel', async () => {
+    tenants.findById.mockResolvedValue({
+      id: TENANT,
+      flow: 'enquiry_intake',
+    });
+    repo.loadSnapshot.mockResolvedValue({
+      conversations: [
+        conv({ id: 'c-new', currentState: ConversationState.NEW }),
+        conv({
+          id: 'c-started',
+          currentState: ConversationState.TECHFIND_GREETING,
+        }),
+        conv({
+          id: 'c-date',
+          currentState: ConversationState.TECHFIND_GREETING,
+        }),
+        conv({
+          id: 'c-confirm',
+          currentState: ConversationState.TECHFIND_GREETING,
+        }),
+        conv({
+          id: 'c-filed',
+          currentState: ConversationState.HUMAN_HANDOFF,
+          updatedAt: TODAY,
+        }),
+        conv({
+          id: 'c-reset',
+          currentState: ConversationState.TECHFIND_GREETING,
+        }),
+      ],
+      simulations: [],
+      enquirySessions: [
+        enquiry({
+          id: 'e-started',
+          conversationId: 'c-started',
+          currentStep: ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
+          createdAt: TODAY,
+        }),
+        enquiry({
+          id: 'e-date',
+          conversationId: 'c-date',
+          currentStep: ENQUIRY_STEPS.AWAITING_DATE,
+          payload: { eventType: 'Wedding' },
+        }),
+        enquiry({
+          id: 'e-confirm',
+          conversationId: 'c-confirm',
+          currentStep: ENQUIRY_STEPS.AWAITING_CONFIRM,
+          payload: {
+            eventType: 'Wedding',
+            eventDate: '2026-10-01',
+            requestedServices: 'Sound',
+            guestEstimate: 80,
+            venue: 'Karen',
+            contactName: 'Ada',
+            contactPhoneNormalized: '+254700000000',
+          },
+        }),
+        enquiry({
+          id: 'e-abandoned',
+          conversationId: 'c-reset',
+          currentStep: ENQUIRY_STEPS.AWAITING_VENUE,
+          payload: { eventType: 'Wedding', eventDate: '2026-10-01' },
+          submittedAt: YESTERDAY,
+          reference: null,
+        }),
+        enquiry({
+          id: 'e-reset-new',
+          conversationId: 'c-reset',
+          currentStep: ENQUIRY_STEPS.AWAITING_SERVICES,
+          payload: { eventType: 'Corporate', eventDate: '2026-11-01' },
+          createdAt: TODAY,
+        }),
+        enquiry({
+          id: 'e-filed',
+          conversationId: 'c-filed',
+          currentStep: ENQUIRY_STEPS.SUBMITTED,
+          payload: { eventType: 'Wedding', venue: 'Westlands' },
+          submittedAt: TODAY,
+          reference: 'REQ-22',
+        }),
+      ],
+      leads: [],
+      recentMessages: [{ conversationId: 'c-filed', createdAt: TODAY }],
+    });
+
+    const funnel = await service.getFunnel(TENANT);
+    expect(funnel.flow).toBe('enquiry_intake');
+    expect(funnel.stages.map((stage) => [stage.key, stage.count])).toEqual([
+      ['whatsapp', 6],
+      ['started', 5],
+      ['event_type', 4],
+      ['date', 3],
+      ['services', 2],
+      ['guests', 2],
+      ['venue', 2],
+      ['budget', 2],
+      ['details', 2],
+      ['confirm', 2],
+      ['submitted', 1],
+    ]);
+
+    const today = await service.getToday(TENANT, NOW);
+    expect(today.flow).toBe('enquiry_intake');
+    expect(today.enquiriesStarted).toBe(2);
+    expect(today.enquiriesSubmitted).toBe(1);
+    expect(today.humanHandoffs).toBe(1);
+    await expect(service.getDemoAnalytics(TENANT)).resolves.toEqual([]);
   });
 
   it('groups demo analytics by salon and solar only', async () => {
