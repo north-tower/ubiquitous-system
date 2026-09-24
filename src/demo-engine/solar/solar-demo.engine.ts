@@ -161,7 +161,7 @@ export class SolarDemoEngine implements DemoEngine {
 
     const tier = recommendSolarTier(spendKes);
     const propertyLabel = String(payload.propertyTypeLabel ?? 'the property');
-    const nextPayload = {
+    const nextPayload: Record<string, any> = {
       ...payload,
       monthlySpendKes: spendKes,
       tierId: tier.id,
