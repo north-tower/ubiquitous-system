@@ -103,6 +103,24 @@ export class DashboardController {
     return this.dashboard.getConversation(resolved, id);
   }
 
+  @Post('conversations/:id/handoff')
+  async handoffConversation(
+    @Param('id') id: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<ConversationDetail> {
+    const resolved = await this.dashboard.resolveTenantId(tenantId);
+    return this.dashboard.handoffConversation(resolved, id);
+  }
+
+  @Post('conversations/:id/resume-automation')
+  async resumeConversationAutomation(
+    @Param('id') id: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<ConversationDetail> {
+    const resolved = await this.dashboard.resolveTenantId(tenantId);
+    return this.dashboard.resumeConversationAutomation(resolved, id);
+  }
+
   @Get('demo-analytics')
   async demoAnalytics(
     @Query('tenantId') tenantId?: string,

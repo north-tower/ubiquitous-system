@@ -142,4 +142,40 @@ describe('ConversationStateMachineService', () => {
       ).rejects.toBeInstanceOf(ConversationNotFoundError);
     });
   });
+
+  describe('human handoff', () => {
+    it('enters handoff from any state', async () => {
+      conversations.findOne.mockResolvedValue(
+        seed({ currentState: ConversationState.NEW }),
+      );
+
+      const updated = await service.enterHumanHandoff('conv-1');
+
+      expect(updated.currentState).toBe(ConversationState.HUMAN_HANDOFF);
+    });
+
+    it('resumes enquiry tenants to NEW', async () => {
+      conversations.findOne.mockResolvedValue(
+        seed({
+          currentState: ConversationState.HUMAN_HANDOFF,
+          demoMode: 'salon',
+        }),
+      );
+
+      const updated = await service.resumeAutomation('conv-1', 'enquiry_intake');
+
+      expect(updated.currentState).toBe(ConversationState.NEW);
+      expect(updated.demoMode).toBeNull();
+    });
+
+    it('resumes demo tenants to TECHFIND_GREETING', async () => {
+      conversations.findOne.mockResolvedValue(
+        seed({ currentState: ConversationState.HUMAN_HANDOFF }),
+      );
+
+      const updated = await service.resumeAutomation('conv-1', 'techfind_demo');
+
+      expect(updated.currentState).toBe(ConversationState.TECHFIND_GREETING);
+    });
+  });
 });

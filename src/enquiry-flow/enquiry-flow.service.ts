@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Conversation } from '../conversation/conversation.entity';
 import { DivineBudgetClient } from '../divine-budget/divine-budget.client';
 import type { DivineBudgetContact } from '../divine-budget/divine-budget.types';
+import { ConversationState } from '../state-machine/conversation-state.enum';
+import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
+import { isHumanHandoffState } from '../state-machine/human-handoff';
 import { matchHandoverCommand } from '../state-machine/match-handover-command';
 import { matchResetCommand } from '../state-machine/match-reset-command';
 import * as copy from './enquiry-copy';
@@ -50,6 +53,7 @@ type StartOptions = {
 export type EnquiryReply = {
   replyText: string;
   list?: 'event_type';
+  silent?: boolean;
 };
 
 @Injectable()
@@ -59,6 +63,7 @@ export class EnquiryFlowService {
   constructor(
     private readonly sessions: EnquirySessionService,
     private readonly divineBudget: DivineBudgetClient,
+    private readonly stateMachine: ConversationStateMachineService,
   ) {}
 
   async handleInbound(
@@ -68,6 +73,13 @@ export class EnquiryFlowService {
     const text = userText?.trim() ?? '';
 
     if (matchResetCommand(text)) {
+      if (isHumanHandoffState(conversation.currentState)) {
+        const resumed = await this.stateMachine.resumeAutomation(
+          conversation.id,
+          'enquiry_intake',
+        );
+        conversation.currentState = resumed.currentState;
+      }
       await this.sessions.closeOpen(conversation.id);
       return this.start(conversation, { forceNew: true });
     }
@@ -78,6 +90,10 @@ export class EnquiryFlowService {
 
     if (matchStatusCommand(text)) {
       return this.reportStatus(conversation);
+    }
+
+    if (isHumanHandoffState(conversation.currentState)) {
+      return { replyText: '', silent: true };
     }
 
     const active = await this.sessions.findActive(conversation.id);
@@ -570,7 +586,11 @@ export class EnquiryFlowService {
     const active = await this.sessions.findActive(conversation.id);
     const latest = await this.sessions.findLatest(conversation.id);
     if (!active && latest?.reference) {
-      return { replyText: copy.ALREADY_SUBMITTED(latest.reference) };
+      const handedOff = await this.stateMachine.enterHumanHandoff(
+        conversation.id,
+      );
+      conversation.currentState = handedOff.currentState;
+      return { replyText: '', silent: true };
     }
 
     const session =
@@ -650,6 +670,10 @@ export class EnquiryFlowService {
         idempotencyKey: session.id,
       });
       await this.sessions.markSubmitted(session, result.reference);
+      const handedOff = await this.stateMachine.enterHumanHandoff(
+        conversation.id,
+      );
+      conversation.currentState = handedOff.currentState;
       return {
         replyText: copy.submittedReply(session.payload, result.reference),
       };

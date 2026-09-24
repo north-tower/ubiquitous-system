@@ -17,6 +17,7 @@ import {
 import { ConversationNotFoundError } from '../state-machine/invalid-state-transition.error';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
+import { matchHandoverCommand } from '../state-machine/match-handover-command';
 import { matchResetCommand } from '../state-machine/match-reset-command';
 import {
   matchNoCommand,
@@ -27,6 +28,7 @@ import { isLiveDemoMode } from './industry-modes';
 import {
   AI_CLASSIFY_FAILED,
   CLASSIFY_PROMPT,
+  HUMAN_HANDOVER_ACK,
   MEETING_OFFERED_COPY,
   MEETING_OFFERED_HOLD,
   noLiveDemoMessage,
@@ -39,6 +41,7 @@ import {
 export type OrchestratorResult = {
   conversation: Conversation;
   replyText: string;
+  silent?: boolean;
 };
 
 @Injectable()
@@ -72,7 +75,17 @@ export class AiOrchestratorService {
       return { conversation: reset, replyText: RESET_NEXT_BUSINESS };
     }
 
+    if (matchHandoverCommand(trimmed)) {
+      await this.demos.closeOpen(conversation.id);
+      const handedOff = await this.stateMachine.enterHumanHandoff(
+        conversation.id,
+      );
+      return { conversation: handedOff, replyText: HUMAN_HANDOVER_ACK };
+    }
+
     switch (conversation.currentState) {
+      case ConversationState.HUMAN_HANDOFF:
+        return { conversation, replyText: '', silent: true };
       case ConversationState.NEW:
       case ConversationState.TECHFIND_GREETING:
         return this.enterDiscovery(conversation);

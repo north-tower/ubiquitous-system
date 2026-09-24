@@ -5,6 +5,7 @@ import { Message } from '../conversation/message.entity';
 import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { OutboundModule } from '../outbound/outbound.module';
+import { StateMachineModule } from '../state-machine/state-machine.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { DashboardBasicAuthGuard } from './dashboard-basic-auth.guard';
 import { DashboardController } from './dashboard.controller';
@@ -15,6 +16,7 @@ import { DashboardTenantService } from './dashboard-tenant.service';
 @Module({
   imports: [
     TenantModule,
+    StateMachineModule,
     OutboundModule,
     TypeOrmModule.forFeature([
       Conversation,

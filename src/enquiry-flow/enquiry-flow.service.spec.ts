@@ -91,9 +91,14 @@ describe('EnquiryFlowService', () => {
     submitEnquiry: jest.fn(),
     lookupContact: jest.fn(),
   };
+  const stateMachine = {
+    enterHumanHandoff: jest.fn(),
+    resumeAutomation: jest.fn(),
+  };
   const service = new EnquiryFlowService(
     sessions as unknown as EnquirySessionService,
     divineBudget as unknown as DivineBudgetClient,
+    stateMachine as never,
   );
   const conversation = {
     id: 'conv-1',
@@ -105,6 +110,7 @@ describe('EnquiryFlowService', () => {
 
   beforeEach(() => {
     sessions.reset();
+    conversation.currentState = ConversationState.NEW;
     divineBudget.isConfigured.mockReturnValue(true);
     divineBudget.submitEnquiry.mockReset();
     divineBudget.lookupContact.mockReset();
@@ -112,6 +118,16 @@ describe('EnquiryFlowService', () => {
     divineBudget.submitEnquiry.mockResolvedValue({
       reference: 'REQ-AB12CD',
       enquiryId: 'enq-1',
+    });
+    stateMachine.enterHumanHandoff.mockReset();
+    stateMachine.resumeAutomation.mockReset();
+    stateMachine.enterHumanHandoff.mockImplementation(async () => {
+      conversation.currentState = ConversationState.HUMAN_HANDOFF;
+      return conversation;
+    });
+    stateMachine.resumeAutomation.mockImplementation(async () => {
+      conversation.currentState = ConversationState.NEW;
+      return conversation;
     });
   });
 
@@ -225,7 +241,8 @@ describe('EnquiryFlowService', () => {
   it('holds after filing until they reset, then keys the next enquiry on a new session', async () => {
     await walkToConfirm();
     await say('1');
-    await expect(say('hi')).resolves.toMatch(/REQ-AB12CD/);
+    expect(stateMachine.enterHumanHandoff).toHaveBeenCalledWith('conv-1');
+    await expect(say('hi')).resolves.toBe('');
     await expect(say('reset')).resolves.toMatch(/Welcome back, Mike/);
     await say('1');
     await say('20th December');

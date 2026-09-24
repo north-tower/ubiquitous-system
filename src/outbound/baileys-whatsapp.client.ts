@@ -112,6 +112,7 @@ export class BaileysWhatsappClient
   private bootPromise: Promise<void> | null = null;
   private defaultTenantId: string | null = null;
   private readonly pairingUntil = new Map<string, number>();
+  private readonly pairingEpoch = new Map<string, number>();
   private pairingTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -180,11 +181,12 @@ export class BaileysWhatsappClient
    * Repeated calls extend the lease so the code can refresh during a scan.
    */
   async beginPairing(tenantId: string): Promise<void> {
-    this.notePairingInterest(tenantId);
     const existing = this.sessions.get(tenantId);
     if (existing?.status === 'connected' && existing.sock) {
       return;
     }
+    const epoch = this.pairingEpoch.get(tenantId) ?? 0;
+    this.notePairingInterest(tenantId);
     if (existing) {
       existing.stopped = false;
       if (existing.status === 'logged_out') {
@@ -193,10 +195,14 @@ export class BaileysWhatsappClient
       }
     }
     await this.startSession(tenantId);
+    if ((this.pairingEpoch.get(tenantId) ?? 0) !== epoch) {
+      await this.stopUnpairedSession(tenantId);
+    }
   }
 
   /** Close an unpaired socket. A connected login is left running. */
   async endPairing(tenantId: string): Promise<void> {
+    this.pairingEpoch.set(tenantId, (this.pairingEpoch.get(tenantId) ?? 0) + 1);
     this.pairingUntil.delete(tenantId);
     this.clearPairingTimerIfIdle();
     await this.stopUnpairedSession(tenantId);
@@ -220,6 +226,7 @@ export class BaileysWhatsappClient
       this.pairingTimer = null;
     }
     this.pairingUntil.clear();
+    this.pairingEpoch.clear();
     await Promise.all(
       [...this.sessions.values()].map(async (session) => {
         session.stopped = true;

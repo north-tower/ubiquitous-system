@@ -8,6 +8,8 @@ import { Conversation } from '../conversation/conversation.entity';
 import { DemoSimulation } from '../demo-engine/demo-simulation.entity';
 import { LeadProfile } from '../lead/lead-profile.entity';
 import { ConversationState } from '../state-machine/conversation-state.enum';
+import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
+import { DEFAULT_TENANT_FLOW } from '../tenant/tenant-flow';
 import { TenantService } from '../tenant/tenant.service';
 import { DashboardRepository } from './dashboard.repository';
 import {
@@ -40,6 +42,7 @@ export class DashboardService {
     private readonly repo: DashboardRepository,
     private readonly tenants: TenantService,
     private readonly config: ConfigService,
+    private readonly stateMachine: ConversationStateMachineService,
   ) {}
 
   async resolveTenantId(queryTenantId?: string): Promise<string> {
@@ -188,6 +191,43 @@ export class DashboardService {
     });
 
     return { items, page, pageSize, total };
+  }
+
+  async handoffConversation(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<ConversationDetail> {
+    const bundle = await this.repo.findConversationBundle(
+      tenantId,
+      conversationId,
+    );
+    if (!bundle) {
+      throw new NotFoundException('Conversation not found');
+    }
+    await this.stateMachine.enterHumanHandoff(conversationId);
+    return this.getConversation(tenantId, conversationId);
+  }
+
+  async resumeConversationAutomation(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<ConversationDetail> {
+    const tenant = await this.tenants.findById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException('Unknown tenant');
+    }
+    const bundle = await this.repo.findConversationBundle(
+      tenantId,
+      conversationId,
+    );
+    if (!bundle) {
+      throw new NotFoundException('Conversation not found');
+    }
+    await this.stateMachine.resumeAutomation(
+      conversationId,
+      tenant.flow ?? DEFAULT_TENANT_FLOW,
+    );
+    return this.getConversation(tenantId, conversationId);
   }
 
   async getConversation(

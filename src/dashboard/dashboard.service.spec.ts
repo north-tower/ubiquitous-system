@@ -229,10 +229,15 @@ describe('DashboardService aggregations', () => {
     findDefault: jest.fn(),
   };
   const config = { get: jest.fn() };
+  const stateMachine = {
+    enterHumanHandoff: jest.fn(),
+    resumeAutomation: jest.fn(),
+  };
   const service = new DashboardService(
     repo as unknown as DashboardRepository,
     tenants as unknown as TenantService,
     config as unknown as ConfigService,
+    stateMachine as never,
   );
 
   beforeEach(() => {

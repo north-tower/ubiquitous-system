@@ -13,7 +13,10 @@ import {
   type BaileysInboundNotice,
 } from '../outbound/baileys-whatsapp.client';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
-import { DEFAULT_TENANT_FLOW } from '../tenant/tenant-flow';
+import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
+import { isHumanHandoffState } from '../state-machine/human-handoff';
+import { matchResetCommand } from '../state-machine/match-reset-command';
+import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
 import { parseTwilioWebhook } from './parse-twilio';
@@ -30,6 +33,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     private readonly enquiryFlow: EnquiryFlowService,
     private readonly outbound: OutboundMessageService,
     private readonly baileys: BaileysWhatsappClient,
+    private readonly stateMachine: ConversationStateMachineService,
   ) {}
 
   onModuleInit(): void {
@@ -135,21 +139,33 @@ export class WhatsappWebhookService implements OnModuleInit {
 
   private async processInbound(input: {
     tenantId: string;
-    flow: string;
+    flow: TenantFlow;
     phoneNumber: string;
     text: string | null;
     raw: unknown;
     channel: 'meta' | 'twilio' | 'baileys';
   }): Promise<void> {
-    const { conversation } = await this.conversations.recordInbound({
+    let { conversation } = await this.conversations.recordInbound({
       tenantId: input.tenantId,
       phoneNumber: input.phoneNumber,
       text: input.text,
       raw: input.raw,
     });
 
+    const trimmed = input.text?.trim() ?? '';
+    if (isHumanHandoffState(conversation.currentState)) {
+      if (!matchResetCommand(trimmed)) {
+        return;
+      }
+      conversation = await this.stateMachine.resumeAutomation(
+        conversation.id,
+        input.flow,
+      );
+    }
+
     let replyText: string;
     let list: 'event_type' | undefined;
+    let silent = false;
     if (input.flow === 'enquiry_intake') {
       const reply = await this.enquiryFlow.handleInbound(
         conversation,
@@ -157,13 +173,18 @@ export class WhatsappWebhookService implements OnModuleInit {
       );
       replyText = reply.replyText;
       list = reply.list;
+      silent = Boolean(reply.silent);
     } else {
-      replyText = (
-        await this.orchestrator.handleInboundMessage(
-          conversation.id,
-          input.text,
-        )
-      ).replyText;
+      const reply = await this.orchestrator.handleInboundMessage(
+        conversation.id,
+        input.text,
+      );
+      replyText = reply.replyText;
+      silent = Boolean(reply.silent);
+    }
+
+    if (silent || !replyText) {
+      return;
     }
 
     await this.outbound.sendAll([

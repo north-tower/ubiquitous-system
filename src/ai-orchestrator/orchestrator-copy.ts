@@ -1,3 +1,6 @@
+export const HUMAN_HANDOVER_ACK =
+  'Thanks — a team member will take over this chat. They may take a little while to reply. Type *reset* when you want the bot again.';
+
 export const RESET_NEXT_BUSINESS =
   'Sure. What business should we simulate next?';
 

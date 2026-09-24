@@ -31,6 +31,10 @@ describe('WhatsappWebhookService', () => {
   const baileys = {
     setInboundHandler: jest.fn(),
   };
+  const stateMachine = {
+    resumeAutomation: jest.fn(),
+    enterHumanHandoff: jest.fn(),
+  };
   const env: Record<string, string> = {
     META_VERIFY_TOKEN: 'verify-me',
   };
@@ -47,6 +51,7 @@ describe('WhatsappWebhookService', () => {
       enquiryFlow as unknown as EnquiryFlowService,
       outbound as unknown as OutboundMessageService,
       baileys as unknown as BaileysWhatsappClient,
+      stateMachine as never,
     );
   }
 
@@ -59,6 +64,8 @@ describe('WhatsappWebhookService', () => {
     enquiryFlow.handleInbound.mockReset();
     outbound.sendAll.mockReset();
     baileys.setInboundHandler.mockReset();
+    stateMachine.resumeAutomation.mockReset();
+    stateMachine.enterHumanHandoff.mockReset();
     conversations.recordInbound.mockResolvedValue({
       conversation: { id: 'conv-1', currentState: ConversationState.NEW },
       message: { id: 'msg-1' },
@@ -297,5 +304,76 @@ describe('WhatsappWebhookService', () => {
         list: 'event_type',
       }),
     ]);
+  });
+
+  it('does not run the flow or reply when the chat is in human handoff', async () => {
+    tenantResolver.resolveByWhatsappPhoneNumberId.mockResolvedValue({
+      id: 'tenant-1',
+      flow: 'techfind_demo',
+    });
+    conversations.recordInbound.mockResolvedValue({
+      conversation: {
+        id: 'conv-1',
+        currentState: ConversationState.HUMAN_HANDOFF,
+      },
+      message: { id: 'msg-1' },
+    });
+
+    await createService().handleInbound(SAMPLE_META_TEXT_WEBHOOK);
+
+    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(enquiryFlow.handleInbound).not.toHaveBeenCalled();
+    expect(outbound.sendAll).not.toHaveBeenCalled();
+  });
+
+  it('resumes automation on reset while in human handoff', async () => {
+    tenantResolver.resolveByWhatsappPhoneNumberId.mockResolvedValue({
+      id: 'tenant-1',
+      flow: 'techfind_demo',
+    });
+    conversations.recordInbound.mockResolvedValue({
+      conversation: {
+        id: 'conv-1',
+        currentState: ConversationState.HUMAN_HANDOFF,
+      },
+      message: { id: 'msg-1' },
+    });
+    stateMachine.resumeAutomation.mockResolvedValue({
+      id: 'conv-1',
+      currentState: ConversationState.TECHFIND_GREETING,
+    });
+
+    await createService().handleInbound({
+      ...SAMPLE_META_TEXT_WEBHOOK,
+      entry: [
+        {
+          ...SAMPLE_META_TEXT_WEBHOOK.entry[0],
+          changes: [
+            {
+              ...SAMPLE_META_TEXT_WEBHOOK.entry[0].changes[0],
+              value: {
+                ...SAMPLE_META_TEXT_WEBHOOK.entry[0].changes[0].value,
+                messages: [
+                  {
+                    ...SAMPLE_META_TEXT_WEBHOOK.entry[0].changes[0].value
+                      .messages[0],
+                    text: { body: 'reset' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(stateMachine.resumeAutomation).toHaveBeenCalledWith(
+      'conv-1',
+      'techfind_demo',
+    );
+    expect(orchestrator.handleInboundMessage).toHaveBeenCalledWith(
+      'conv-1',
+      'reset',
+    );
   });
 });

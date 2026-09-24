@@ -39,7 +39,9 @@ availability, and never takes payment (no M-Pesa, no KCB, no deposit).
 10. File in Divine Budget; reply with the `REQ-…` reference
 
 `reset` starts a new enquiry on the same chat. After a successful file,
-further messages hold on that reference until they reset.
+the bot pauses (human handoff) so staff can reply on WhatsApp without
+the automation jumping in. The customer can type *reset* to start a
+new enquiry, or staff can resume the bot from the desk.
 
 Returning customers:
 
