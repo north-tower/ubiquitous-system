@@ -10,6 +10,8 @@ function profile(overrides: Partial<LeadProfile>): LeadProfile {
   return {
     id: 'lead-1',
     conversationId: 'conv-1',
+    contactName: null,
+    serviceRequired: null,
     businessName: null,
     dailyEnquiryVolume: null,
     currentProcess: null,
@@ -59,6 +61,17 @@ describe('LeadScoringService', () => {
       leadScore: 'WARM',
       nextAction: NEXT_ACTION_BY_SCORE.WARM,
     });
+  });
+
+  it('scores WARM for Techfind intake with name, business, and qualification', () => {
+    const result = service.score(
+      profile({
+        contactName: 'Jane',
+        businessName: 'Acme Ltd',
+        painPoint: 'Need a new website',
+      }),
+    );
+    expect(result.leadScore).toBe('WARM');
   });
 
   it('scores COLD when volume is below the warm floor', () => {

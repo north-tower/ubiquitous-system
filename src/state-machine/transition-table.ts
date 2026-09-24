@@ -10,6 +10,7 @@ export const TRANSITION_TABLE: {
   [ConversationState.NEW]: [ConversationState.TECHFIND_GREETING],
   [ConversationState.TECHFIND_GREETING]: [
     ConversationState.INDUSTRY_DISCOVERY,
+    ConversationState.BUSINESS_QUALIFICATION,
     ConversationState.TECHFIND_GREETING,
   ],
   [ConversationState.INDUSTRY_DISCOVERY]: [

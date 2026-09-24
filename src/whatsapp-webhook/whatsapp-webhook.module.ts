@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AiOrchestratorModule } from '../ai-orchestrator/ai-orchestrator.module';
+import { TechfindIntakeModule } from '../techfind-intake/techfind-intake.module';
 import { ConversationModule } from '../conversation/conversation.module';
 import { EnquiryFlowModule } from '../enquiry-flow/enquiry-flow.module';
 import { OutboundModule } from '../outbound/outbound.module';
@@ -13,7 +13,7 @@ import { WhatsappWebhookService } from './whatsapp-webhook.service';
   imports: [
     TenantModule,
     ConversationModule,
-    AiOrchestratorModule,
+    TechfindIntakeModule,
     EnquiryFlowModule,
     OutboundModule,
     StateMachineModule,

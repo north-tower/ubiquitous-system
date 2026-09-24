@@ -74,7 +74,9 @@ export type ConversationDetail = {
   nextAction: string | null;
   createdAt: Date;
   lead: {
+    contactName: string | null;
     businessName: string | null;
+    serviceRequired: string | null;
     industry: string | null;
     leadScore: LeadScore | null;
     painPoint: string | null;

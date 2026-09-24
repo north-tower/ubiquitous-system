@@ -11,6 +11,7 @@ import { Phase6EnquiryFlow20260918120000 } from './migrations/20260918120000-Pha
 import { Phase7TenantLinkedPhone20260924120000 } from './migrations/20260924120000-Phase7TenantLinkedPhone';
 import { Phase8TenantConnectToken20260924130000 } from './migrations/20260924130000-Phase8TenantConnectToken';
 import { Phase9TenantPortalAuth20260924140000 } from './migrations/20260924140000-Phase9TenantPortalAuth';
+import { Phase10TechfindIntake20260924160000 } from './migrations/20260924160000-Phase10TechfindIntake';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { Phase9TenantPortalAuth20260924140000 } from './migrations/2026092414000
           Phase7TenantLinkedPhone20260924120000,
           Phase8TenantConnectToken20260924130000,
           Phase9TenantPortalAuth20260924140000,
+          Phase10TechfindIntake20260924160000,
         ],
         logging: config.get<string>('TYPEORM_LOGGING') === 'true',
       }),

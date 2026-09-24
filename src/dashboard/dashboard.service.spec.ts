@@ -61,6 +61,8 @@ function lead(overrides: Partial<LeadProfile>): LeadProfile {
   return {
     id: 'lead-default',
     conversationId: 'c-default',
+    contactName: null,
+    serviceRequired: null,
     businessName: null,
     dailyEnquiryVolume: null,
     currentProcess: null,
@@ -497,7 +499,9 @@ describe('DashboardService aggregations', () => {
       nextAction: 'Call today',
       createdAt: conversation.createdAt,
       lead: {
+        contactName: null,
         businessName: 'Glow Salon',
+        serviceRequired: null,
         industry: 'salon',
         leadScore: 'HOT',
         painPoint: 'Missed bookings',

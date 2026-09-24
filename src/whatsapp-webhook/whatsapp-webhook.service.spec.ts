@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
+import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
@@ -19,8 +19,8 @@ describe('WhatsappWebhookService', () => {
   const conversations = {
     recordInbound: jest.fn(),
   };
-  const orchestrator = {
-    handleInboundMessage: jest.fn(),
+  const techfindIntake = {
+    handleInbound: jest.fn(),
   };
   const enquiryFlow = {
     handleInbound: jest.fn(),
@@ -47,7 +47,7 @@ describe('WhatsappWebhookService', () => {
       config as unknown as ConfigService,
       tenantResolver as unknown as TenantResolverService,
       conversations as unknown as ConversationService,
-      orchestrator as unknown as AiOrchestratorService,
+      techfindIntake as unknown as TechfindIntakeFlowService,
       enquiryFlow as unknown as EnquiryFlowService,
       outbound as unknown as OutboundMessageService,
       baileys as unknown as BaileysWhatsappClient,
@@ -60,7 +60,7 @@ describe('WhatsappWebhookService', () => {
     tenantResolver.resolveDefault.mockReset();
     tenantResolver.resolveById.mockReset();
     conversations.recordInbound.mockReset();
-    orchestrator.handleInboundMessage.mockReset();
+    techfindIntake.handleInbound.mockReset();
     enquiryFlow.handleInbound.mockReset();
     outbound.sendAll.mockReset();
     baileys.setInboundHandler.mockReset();
@@ -70,8 +70,7 @@ describe('WhatsappWebhookService', () => {
       conversation: { id: 'conv-1', currentState: ConversationState.NEW },
       message: { id: 'msg-1' },
     });
-    orchestrator.handleInboundMessage.mockResolvedValue({
-      conversation: { id: 'conv-1' },
+    techfindIntake.handleInbound.mockResolvedValue({
       replyText: 'hello back',
     });
     enquiryFlow.handleInbound.mockResolvedValue({
@@ -105,8 +104,8 @@ describe('WhatsappWebhookService', () => {
       text: 'hello',
       raw: SAMPLE_META_TEXT_WEBHOOK.entry[0].changes[0].value.messages[0],
     });
-    expect(orchestrator.handleInboundMessage).toHaveBeenCalledWith(
-      'conv-1',
+    expect(techfindIntake.handleInbound).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'conv-1' }),
       'hello',
     );
     expect(enquiryFlow.handleInbound).not.toHaveBeenCalled();
@@ -183,7 +182,7 @@ describe('WhatsappWebhookService', () => {
     });
 
     expect(enquiryFlow.handleInbound).toHaveBeenCalled();
-    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(techfindIntake.handleInbound).not.toHaveBeenCalled();
     expect(outbound.sendAll).toHaveBeenCalledWith([
       expect.objectContaining({
         channel: 'baileys',
@@ -223,9 +222,9 @@ describe('WhatsappWebhookService', () => {
     ]);
   });
 
-  it('does not throw when Twilio orchestrator processing fails', async () => {
+  it('does not throw when Twilio intake processing fails', async () => {
     tenantResolver.resolveDefault.mockResolvedValue({ id: 'tenant-1' });
-    orchestrator.handleInboundMessage.mockRejectedValue(new Error('boom'));
+    techfindIntake.handleInbound.mockRejectedValue(new Error('boom'));
 
     await expect(
       createService().handleTwilioInbound({
@@ -246,7 +245,7 @@ describe('WhatsappWebhookService', () => {
     expect(outbound.sendAll).not.toHaveBeenCalled();
   });
 
-  it('routes an enquiry_intake tenant to the enquiry flow, not the Techfind orchestrator', async () => {
+  it('routes an enquiry_intake tenant to the enquiry flow, not the Techfind intake', async () => {
     const conversation = {
       id: 'conv-1',
       prospectPhone: '254798229340',
@@ -270,7 +269,7 @@ describe('WhatsappWebhookService', () => {
     });
 
     expect(enquiryFlow.handleInbound).toHaveBeenCalledWith(conversation, 'hi');
-    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(techfindIntake.handleInbound).not.toHaveBeenCalled();
     expect(outbound.sendAll).toHaveBeenCalledWith([
       expect.objectContaining({
         text: 'what are you planning?',
@@ -321,7 +320,7 @@ describe('WhatsappWebhookService', () => {
 
     await createService().handleInbound(SAMPLE_META_TEXT_WEBHOOK);
 
-    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(techfindIntake.handleInbound).not.toHaveBeenCalled();
     expect(enquiryFlow.handleInbound).not.toHaveBeenCalled();
     expect(outbound.sendAll).not.toHaveBeenCalled();
   });
@@ -371,8 +370,8 @@ describe('WhatsappWebhookService', () => {
       'conv-1',
       'techfind_demo',
     );
-    expect(orchestrator.handleInboundMessage).toHaveBeenCalledWith(
-      'conv-1',
+    expect(techfindIntake.handleInbound).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'conv-1' }),
       'reset',
     );
   });

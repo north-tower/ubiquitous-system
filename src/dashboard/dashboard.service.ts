@@ -237,7 +237,9 @@ export class DashboardService {
       createdAt: conversation.createdAt,
       lead: lead
         ? {
+            contactName: lead.contactName,
             businessName: lead.businessName,
+            serviceRequired: lead.serviceRequired,
             industry: conversation.demoMode,
             leadScore: lead.leadScore,
             painPoint: lead.painPoint,

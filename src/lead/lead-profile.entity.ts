@@ -17,6 +17,22 @@ export class LeadProfile {
   conversationId: string;
 
   @Column({
+    name: 'contact_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  contactName: string | null;
+
+  @Column({
+    name: 'service_required',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  serviceRequired: string | null;
+
+  @Column({
     name: 'business_name',
     type: 'varchar',
     length: 255,

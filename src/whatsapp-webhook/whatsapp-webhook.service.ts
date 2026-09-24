@@ -5,7 +5,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
+import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
 import {
@@ -29,7 +29,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly tenantResolver: TenantResolverService,
     private readonly conversations: ConversationService,
-    private readonly orchestrator: AiOrchestratorService,
+    private readonly techfindIntake: TechfindIntakeFlowService,
     private readonly enquiryFlow: EnquiryFlowService,
     private readonly outbound: OutboundMessageService,
     private readonly baileys: BaileysWhatsappClient,
@@ -175,8 +175,8 @@ export class WhatsappWebhookService implements OnModuleInit {
       list = reply.list;
       silent = Boolean(reply.silent);
     } else {
-      const reply = await this.orchestrator.handleInboundMessage(
-        conversation.id,
+      const reply = await this.techfindIntake.handleInbound(
+        conversation,
         input.text,
       );
       replyText = reply.replyText;

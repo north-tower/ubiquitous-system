@@ -48,6 +48,14 @@ export class LeadScoringService {
       return 'WARM';
     }
 
+    if (
+      Boolean(profile.contactName?.trim()) &&
+      Boolean(profile.businessName?.trim()) &&
+      hasPain
+    ) {
+      return 'WARM';
+    }
+
     return 'COLD';
   }
 }
