@@ -8,6 +8,7 @@ import { Phase3DemoSimulations20260826030000 } from './migrations/20260826030000
 import { Phase4AiUsageEvents20260826040000 } from './migrations/20260826040000-Phase4AiUsageEvents';
 import { Phase5LeadProfiles20260826050000 } from './migrations/20260826050000-Phase5LeadProfiles';
 import { Phase6EnquiryFlow20260918120000 } from './migrations/20260918120000-Phase6EnquiryFlow';
+import { Phase7TenantLinkedPhone20260924120000 } from './migrations/20260924120000-Phase7TenantLinkedPhone';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { Phase6EnquiryFlow20260918120000 } from './migrations/20260918120000-Pha
           Phase4AiUsageEvents20260826040000,
           Phase5LeadProfiles20260826050000,
           Phase6EnquiryFlow20260918120000,
+          Phase7TenantLinkedPhone20260924120000,
         ],
         logging: config.get<string>('TYPEORM_LOGGING') === 'true',
       }),

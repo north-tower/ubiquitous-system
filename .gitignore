@@ -35,6 +35,9 @@ lerna-debug.log*
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Baileys WhatsApp Web session (login keys). Do not commit.
+/baileys-auth
+
 # dotenv environment variable files
 .env
 .env.development.local

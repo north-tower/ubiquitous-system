@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { DashboardBasicAuthGuard } from './dashboard-basic-auth.guard';
+import { DashboardTenantService } from './dashboard-tenant.service';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { type ConversationDetail } from './dashboard.types';
@@ -12,6 +13,11 @@ describe('DashboardController conversations/:id', () => {
     resolveTenantId: jest.fn(),
     getConversation: jest.fn(),
   };
+  const tenantLinks = {
+    create: jest.fn(),
+    list: jest.fn(),
+    whatsapp: jest.fn(),
+  };
 
   beforeEach(async () => {
     dashboard.resolveTenantId.mockReset();
@@ -20,7 +26,10 @@ describe('DashboardController conversations/:id', () => {
 
     const module = await Test.createTestingModule({
       controllers: [DashboardController],
-      providers: [{ provide: DashboardService, useValue: dashboard }],
+      providers: [
+        { provide: DashboardService, useValue: dashboard },
+        { provide: DashboardTenantService, useValue: tenantLinks },
+      ],
     })
       .overrideGuard(DashboardBasicAuthGuard)
       .useValue({ canActivate: () => true })
@@ -76,5 +85,17 @@ describe('DashboardController conversations/:id', () => {
     dashboard.getConversation.mockResolvedValue(detail);
 
     await expect(controller.conversation('c-scored')).resolves.toEqual(detail);
+  });
+
+  it('creates a tenant and returns its id', async () => {
+    tenantLinks.create.mockResolvedValue({ id: 'tenant-9' });
+
+    await expect(
+      controller.createTenant({ name: 'Divine', flow: 'enquiry_intake' }),
+    ).resolves.toEqual({ id: 'tenant-9' });
+    expect(tenantLinks.create).toHaveBeenCalledWith({
+      name: 'Divine',
+      flow: 'enquiry_intake',
+    });
   });
 });

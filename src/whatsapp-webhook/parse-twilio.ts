@@ -58,7 +58,8 @@ export function parseTwilioWebhook(body: unknown): ParsedTwilioInbound | null {
     return null;
   }
 
-  const bodyText = fields.Body?.trim() ? fields.Body : null;
+  const listChoice = fields.ListId?.trim() ? fields.ListId.trim() : null;
+  const bodyText = listChoice ?? (fields.Body?.trim() ? fields.Body : null);
 
   return {
     waId,

@@ -1,4 +1,4 @@
-export type WhatsappChannel = 'meta' | 'twilio';
+export type WhatsappChannel = 'meta' | 'twilio' | 'baileys';
 
 export type WhatsappSendResult = {
   channel: WhatsappChannel;
@@ -12,6 +12,7 @@ export interface WhatsappSender {
   sendText(
     to: string,
     body: string,
+    tenantId?: string,
   ): Promise<Omit<WhatsappSendResult, 'channel'>>;
 }
 

@@ -9,6 +9,10 @@ export type OutboundTextJob = {
   to: string;
   text: string;
   channel?: WhatsappChannel;
+  /** Baileys replies go out on the socket that received the inbound message. */
+  tenantId?: string;
+  /** Twilio list-picker. Sent only when that channel is Twilio and the matching Content SID is set. */
+  list?: 'event_type';
 };
 
 @Injectable()
@@ -37,10 +41,36 @@ export class OutboundMessageService {
       );
       return;
     }
+    const contentSid = this.listContentSid(job);
+    if (contentSid) {
+      try {
+        const { channel, messageId, raw } = await this.router.sendContent(
+          job.to,
+          contentSid,
+        );
+        await this.conversations.recordOutbound({
+          conversationId: job.conversationId,
+          text: job.text,
+          rawPayload: { channel, messageId, contentSid, response: raw },
+        });
+        this.logger.log(
+          `Sent WhatsApp list conversation=${job.conversationId} to=${job.to} channel=${channel}`,
+        );
+        return;
+      } catch (error) {
+        this.logger.error(
+          `WhatsApp list send failed, falling back to text conversation=${job.conversationId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
     const { channel, messageId, raw } = await this.router.sendText(
       job.to,
       job.text,
       job.channel,
+      job.tenantId,
     );
     await this.conversations.recordOutbound({
       conversationId: job.conversationId,
@@ -50,6 +80,20 @@ export class OutboundMessageService {
     this.logger.log(
       `Sent WhatsApp text conversation=${job.conversationId} to=${job.to} channel=${channel}`,
     );
+  }
+
+  private listContentSid(job: OutboundTextJob): string | null {
+    if (
+      job.list !== 'event_type' ||
+      job.channel === 'meta' ||
+      job.channel === 'baileys'
+    ) {
+      return null;
+    }
+    const sid = this.config
+      .get<string>('TWILIO_EVENT_TYPE_CONTENT_SID')
+      ?.trim();
+    return sid ? sid : null;
   }
 
   async sendAll(jobs: OutboundTextJob[]): Promise<void> {

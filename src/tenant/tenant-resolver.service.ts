@@ -18,4 +18,11 @@ export class TenantResolverService {
   async resolveDefault(): Promise<Tenant | null> {
     return this.tenantService.findDefault();
   }
+
+  async resolveById(id: string): Promise<Tenant | null> {
+    if (!id) {
+      return null;
+    }
+    return this.tenantService.findById(id);
+  }
 }

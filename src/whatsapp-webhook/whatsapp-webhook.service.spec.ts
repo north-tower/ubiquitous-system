@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
@@ -13,6 +14,7 @@ describe('WhatsappWebhookService', () => {
   const tenantResolver = {
     resolveByWhatsappPhoneNumberId: jest.fn(),
     resolveDefault: jest.fn(),
+    resolveById: jest.fn(),
   };
   const conversations = {
     recordInbound: jest.fn(),
@@ -25,6 +27,9 @@ describe('WhatsappWebhookService', () => {
   };
   const outbound = {
     sendAll: jest.fn(),
+  };
+  const baileys = {
+    setInboundHandler: jest.fn(),
   };
   const env: Record<string, string> = {
     META_VERIFY_TOKEN: 'verify-me',
@@ -41,16 +46,19 @@ describe('WhatsappWebhookService', () => {
       orchestrator as unknown as AiOrchestratorService,
       enquiryFlow as unknown as EnquiryFlowService,
       outbound as unknown as OutboundMessageService,
+      baileys as unknown as BaileysWhatsappClient,
     );
   }
 
   beforeEach(() => {
     tenantResolver.resolveByWhatsappPhoneNumberId.mockReset();
     tenantResolver.resolveDefault.mockReset();
+    tenantResolver.resolveById.mockReset();
     conversations.recordInbound.mockReset();
     orchestrator.handleInboundMessage.mockReset();
     enquiryFlow.handleInbound.mockReset();
     outbound.sendAll.mockReset();
+    baileys.setInboundHandler.mockReset();
     conversations.recordInbound.mockResolvedValue({
       conversation: { id: 'conv-1', currentState: ConversationState.NEW },
       message: { id: 'msg-1' },
@@ -101,7 +109,80 @@ describe('WhatsappWebhookService', () => {
         to: '254711111111',
         text: 'hello back',
         channel: 'meta',
+        tenantId: 'tenant-1',
       },
+    ]);
+  });
+
+  it('registers the Baileys inbound handler on init', () => {
+    const service = createService();
+    service.onModuleInit();
+    expect(baileys.setInboundHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('replies on Baileys for the tenant that owns the socket', async () => {
+    tenantResolver.resolveById.mockResolvedValue({ id: 'tenant-9' });
+
+    await createService().handleBaileysInbound({
+      tenantId: 'tenant-9',
+      phoneNumber: '254711111111',
+      text: 'hello',
+      raw: { key: { remoteJid: '254711111111@s.whatsapp.net' } },
+    });
+
+    expect(tenantResolver.resolveDefault).not.toHaveBeenCalled();
+    expect(conversations.recordInbound).toHaveBeenCalledWith({
+      tenantId: 'tenant-9',
+      phoneNumber: '254711111111',
+      text: 'hello',
+      raw: { key: { remoteJid: '254711111111@s.whatsapp.net' } },
+    });
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      {
+        conversationId: 'conv-1',
+        to: '254711111111',
+        text: 'hello back',
+        channel: 'baileys',
+        tenantId: 'tenant-9',
+      },
+    ]);
+  });
+
+  it('does not persist a Baileys message when that tenant is missing', async () => {
+    tenantResolver.resolveById.mockResolvedValue(null);
+
+    await createService().handleBaileysInbound({
+      tenantId: 'missing',
+      phoneNumber: '254711111111',
+      text: 'hello',
+      raw: {},
+    });
+
+    expect(conversations.recordInbound).not.toHaveBeenCalled();
+    expect(outbound.sendAll).not.toHaveBeenCalled();
+  });
+
+  it('runs the enquiry flow for the Baileys tenant that owns the number', async () => {
+    tenantResolver.resolveById.mockResolvedValue({
+      id: 'tenant-enquiry',
+      flow: 'enquiry_intake',
+    });
+
+    await createService().handleBaileysInbound({
+      tenantId: 'tenant-enquiry',
+      phoneNumber: '254798229340',
+      text: 'hi',
+      raw: {},
+    });
+
+    expect(enquiryFlow.handleInbound).toHaveBeenCalled();
+    expect(orchestrator.handleInboundMessage).not.toHaveBeenCalled();
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      expect.objectContaining({
+        channel: 'baileys',
+        tenantId: 'tenant-enquiry',
+        text: 'what are you planning?',
+      }),
     ]);
   });
 
@@ -130,6 +211,7 @@ describe('WhatsappWebhookService', () => {
         to: '254711111111',
         text: 'hello back',
         channel: 'twilio',
+        tenantId: 'tenant-1',
       },
     ]);
   });
@@ -186,6 +268,33 @@ describe('WhatsappWebhookService', () => {
       expect.objectContaining({
         text: 'what are you planning?',
         channel: 'twilio',
+      }),
+    ]);
+  });
+
+  it('forwards an event-type list on the Twilio reply', async () => {
+    tenantResolver.resolveDefault.mockResolvedValue({
+      id: 'tenant-1',
+      flow: 'enquiry_intake',
+    });
+    enquiryFlow.handleInbound.mockResolvedValue({
+      replyText: 'what are you planning?',
+      list: 'event_type',
+    });
+
+    await createService().handleTwilioInbound({
+      SmsStatus: 'received',
+      Body: 'hi',
+      From: 'whatsapp:+254798229340',
+      WaId: '254798229340',
+      MessageSid: 'SM123',
+    });
+
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      expect.objectContaining({
+        text: 'what are you planning?',
+        channel: 'twilio',
+        list: 'event_type',
       }),
     ]);
   });

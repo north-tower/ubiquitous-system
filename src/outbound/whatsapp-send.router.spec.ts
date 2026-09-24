@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import { WhatsappSendRouter } from './whatsapp-send.router';
@@ -13,6 +14,12 @@ describe('WhatsappSendRouter', () => {
     channel: 'twilio' as const,
     isConfigured: jest.fn(),
     sendText: jest.fn(),
+    sendContent: jest.fn(),
+  };
+  const baileys = {
+    channel: 'baileys' as const,
+    isConfigured: jest.fn(),
+    sendText: jest.fn(),
   };
   const env: Record<string, string | undefined> = {};
   const config = {
@@ -24,6 +31,7 @@ describe('WhatsappSendRouter', () => {
       config as unknown as ConfigService,
       meta as unknown as MetaWhatsappClient,
       twilio as unknown as TwilioWhatsappClient,
+      baileys as unknown as BaileysWhatsappClient,
     );
   }
 
@@ -32,12 +40,18 @@ describe('WhatsappSendRouter', () => {
     meta.sendText.mockReset();
     twilio.isConfigured.mockReset();
     twilio.sendText.mockReset();
+    twilio.sendContent.mockReset();
+    baileys.isConfigured.mockReset();
+    baileys.sendText.mockReset();
     env.WHATSAPP_SEND_FAILOVER = undefined;
     env.WHATSAPP_PRIMARY_CHANNEL = undefined;
     meta.isConfigured.mockReturnValue(true);
     twilio.isConfigured.mockReturnValue(true);
+    baileys.isConfigured.mockReturnValue(false);
     meta.sendText.mockResolvedValue({ messageId: 'wamid.1', raw: {} });
     twilio.sendText.mockResolvedValue({ messageId: 'SM1', raw: {} });
+    twilio.sendContent.mockResolvedValue({ messageId: 'SM2', raw: {} });
+    baileys.sendText.mockResolvedValue({ messageId: 'BA1', raw: {} });
   });
 
   it('uses Twilio first when no inbound channel is specified', async () => {
@@ -64,6 +78,55 @@ describe('WhatsappSendRouter', () => {
     });
     expect(meta.sendText).toHaveBeenCalled();
     expect(twilio.sendText).not.toHaveBeenCalled();
+  });
+
+  it('uses Baileys first when WHATSAPP_PRIMARY_CHANNEL=baileys', async () => {
+    env.WHATSAPP_PRIMARY_CHANNEL = 'baileys';
+    baileys.isConfigured.mockReturnValue(true);
+
+    await expect(
+      createRouter().sendText('254711111111', 'hi'),
+    ).resolves.toEqual({
+      channel: 'baileys',
+      messageId: 'BA1',
+      raw: {},
+    });
+    expect(baileys.sendText).toHaveBeenCalled();
+    expect(twilio.sendText).not.toHaveBeenCalled();
+    expect(meta.sendText).not.toHaveBeenCalled();
+  });
+
+  it('passes the tenant id to the Baileys socket only', async () => {
+    baileys.isConfigured.mockReturnValue(true);
+
+    await createRouter().sendText(
+      '254711111111',
+      'hi',
+      'baileys',
+      'tenant-9',
+    );
+
+    expect(baileys.sendText).toHaveBeenCalledWith(
+      '254711111111',
+      'hi',
+      'tenant-9',
+    );
+    expect(twilio.sendText).not.toHaveBeenCalled();
+  });
+
+  it('sends on the preferred Baileys channel and does not call Twilio', async () => {
+    baileys.isConfigured.mockReturnValue(true);
+
+    await expect(
+      createRouter().sendText('254711111111', 'hi', 'baileys'),
+    ).resolves.toEqual({
+      channel: 'baileys',
+      messageId: 'BA1',
+      raw: {},
+    });
+    expect(baileys.sendText).toHaveBeenCalledWith('254711111111', 'hi');
+    expect(twilio.sendText).not.toHaveBeenCalled();
+    expect(meta.sendText).not.toHaveBeenCalled();
   });
 
   it('sends on the preferred channel when it is configured', async () => {
@@ -110,9 +173,22 @@ describe('WhatsappSendRouter', () => {
     expect(meta.sendText).not.toHaveBeenCalled();
   });
 
+  it('sends a Twilio content template for a list', async () => {
+    await expect(
+      createRouter().sendContent('254711111111', 'HXevent'),
+    ).resolves.toEqual({
+      channel: 'twilio',
+      messageId: 'SM2',
+      raw: {},
+    });
+    expect(twilio.sendContent).toHaveBeenCalledWith('254711111111', 'HXevent');
+    expect(twilio.sendText).not.toHaveBeenCalled();
+  });
+
   it('throws when no provider is configured', async () => {
     meta.isConfigured.mockReturnValue(false);
     twilio.isConfigured.mockReturnValue(false);
+    baileys.isConfigured.mockReturnValue(false);
 
     await expect(createRouter().sendText('254711111111', 'hi')).rejects.toThrow(
       'No WhatsApp provider is configured',

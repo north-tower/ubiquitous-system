@@ -36,7 +36,7 @@ export function matchNumberedOption(
   const haystack = normalize(trimmed);
   const ranked = options
     .flatMap((option) =>
-      [option.label, ...option.aliases].map((alias) => ({
+      [option.id, option.label, ...option.aliases].map((alias) => ({
         option,
         alias: normalize(alias),
       })),
@@ -118,7 +118,7 @@ function matchAllOptionsInText(
     (a, b) => longestAlias(b).length - longestAlias(a).length,
   );
   for (const option of ranked) {
-    const aliases = [option.label, ...option.aliases].map(normalize);
+    const aliases = [option.id, option.label, ...option.aliases].map(normalize);
     if (
       aliases.some(
         (alias) =>
@@ -133,7 +133,7 @@ function matchAllOptionsInText(
 }
 
 function longestAlias(option: NumberedOption): string {
-  return [option.label, ...option.aliases].reduce((best, alias) =>
+  return [option.id, option.label, ...option.aliases].reduce((best, alias) =>
     alias.length > best.length ? alias : best,
   );
 }

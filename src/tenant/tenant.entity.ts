@@ -44,6 +44,15 @@ export class Tenant {
   })
   flow: TenantFlow;
 
+  /** WhatsApp number that scanned this tenant's Baileys QR. */
+  @Column({
+    name: 'linked_phone',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  linkedPhone: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

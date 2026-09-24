@@ -115,29 +115,41 @@ describe('EnquiryFlowService', () => {
     });
   });
 
+  it('offers the opening event question as a tappable list', async () => {
+    const opening = await service.handleInbound(conversation, 'hi');
+    expect(opening.list).toBe('event_type');
+    expect(opening.replyText).toMatch(/What are you planning/i);
+    await expect(say('church')).resolves.toMatch(/When is it/i);
+    sessions.reset();
+    await say('hi');
+    await expect(say('Birthday or party')).resolves.toMatch(/When is it/i);
+  });
+
   it('walks the enquiry conversation and files it on confirm', async () => {
-    await expect(say('hi')).resolves.toMatch(/What are you planning/i);
+    await expect(say('hi')).resolves.toMatch(/Divine Budgets/);
     await expect(say('Wedding')).resolves.toMatch(/When is it/i);
     await expect(say('20th December')).resolves.toMatch(/handle/i);
     await expect(say('1, 2')).resolves.toMatch(/how many guests/i);
     await expect(say('400-1000')).resolves.toMatch(/venue/i);
-    await expect(say('Nakuru')).resolves.toMatch(/budget/i);
+    await expect(say('Nakuru')).resolves.toMatch(/venue or site name/i);
+    await expect(say('skip')).resolves.toMatch(/budget/i);
     await expect(say('50-100k')).resolves.toMatch(/Anything else/i);
     await expect(say('Need a generator')).resolves.toMatch(
-      /What name should we use/i,
+      /What name should we put on the enquiry/i,
     );
     await expect(say('Mike')).resolves.toMatch(/best phone number/i);
     const confirm = await say('1');
     expect(confirm).toMatch(/20 December 20\d{2}/);
     expect(confirm).toMatch(/Sound & PA, Lighting/);
-    expect(confirm).toMatch(/50-100k/);
+    expect(confirm).toMatch(/KES 50,000–100,000/);
     expect(confirm).toMatch(/Need a generator/);
     expect(confirm).toMatch(/Does that look right/i);
 
     const done = await say('1');
     expect(done).toMatch(/REQ-AB12CD/);
     expect(done).toMatch(/Thank you, Mike/);
-    expect(done).toMatch(/review the details and respond/i);
+    expect(done).toMatch(/2 business hours/i);
+    expect(done).not.toMatch(/Event: Wedding/);
     expect(divineBudget.submitEnquiry).toHaveBeenCalledWith(
       expect.objectContaining({
         contactName: 'Mike',
@@ -148,7 +160,7 @@ describe('EnquiryFlowService', () => {
         guestEstimateRaw: '400-1000',
         requestedServices: 'Sound & PA, Lighting',
         notes: 'Need a generator',
-        budgetRange: '50-100k',
+        budgetRange: 'KES 50,000–100,000',
         wantsCallback: false,
         idempotencyKey: 'sess-1',
       }),
@@ -180,9 +192,13 @@ describe('EnquiryFlowService', () => {
     expect(sessions.active()?.currentStep).toBe(ENQUIRY_STEPS.AWAITING_DATE);
   });
 
-  it('starts over from confirmation without filing', async () => {
+  it('lets them edit one field from confirmation without restarting', async () => {
     await walkToConfirm();
-    await expect(say('2')).resolves.toMatch(/What are you planning/i);
+    await expect(say('2')).resolves.toMatch(/Which part should I change/i);
+    await expect(say('5')).resolves.toMatch(/Where is the venue/i);
+    const confirm = await say('Nakuru, ABC Gardens');
+    expect(confirm).toMatch(/ABC Gardens, Nakuru/);
+    expect(confirm).toMatch(/Does that look right/i);
     expect(divineBudget.submitEnquiry).not.toHaveBeenCalled();
   });
 
@@ -216,6 +232,7 @@ describe('EnquiryFlowService', () => {
     await say('1');
     await say('500');
     await say('Nakuru');
+    await say('skip');
     await say('skip');
     const confirm = await say('skip');
     expect(confirm).toMatch(/Name: Mike/);
@@ -276,6 +293,7 @@ describe('EnquiryFlowService', () => {
     await say('500');
     await say('Nakuru');
     await say('skip');
+    await say('skip');
     const confirm = await say('skip');
     expect(confirm).toMatch(/Name: Mike Otieno/);
     expect(confirm).toMatch(/Does that look right/i);
@@ -286,6 +304,66 @@ describe('EnquiryFlowService', () => {
     return replyText;
   }
 
+  it('does not store a greeting as the customer name', async () => {
+    await say('hi');
+    await say('1');
+    await say('20th December');
+    await say('4');
+    await say('600');
+    await say('nakuru');
+    await say('skip');
+    await say('23000');
+    await expect(say('1')).resolves.toMatch(/Anything else/i);
+    await expect(say('skip')).resolves.toMatch(
+      /What name should we put on the enquiry/i,
+    );
+    await expect(say('hi')).resolves.toMatch(
+      /What name should we put on the enquiry/i,
+    );
+    await expect(say('Mike')).resolves.toMatch(/best phone number/i);
+  });
+
+  it('normalizes a low budget, warns, and flags it for staff', async () => {
+    await say('hi');
+    await say('1');
+    await say('20th December');
+    await say('4');
+    await say('600');
+    await expect(say('nakuru, abc gardens')).resolves.toMatch(/budget/i);
+    await expect(say('23000')).resolves.toMatch(/on the low side/i);
+    await expect(say('1')).resolves.toMatch(/Anything else/i);
+    await say('skip');
+    await say('Mike');
+    await say('1');
+    await say('1');
+    expect(divineBudget.submitEnquiry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        venue: 'ABC Gardens, Nakuru',
+        budgetRange: 'KES 23,000',
+        notes: expect.stringMatching(/budget looks low/i),
+      }),
+    );
+  });
+
+  it('reports enquiry status without restarting the flow', async () => {
+    await walkToConfirm();
+    await say('1');
+    divineBudget.lookupContact.mockResolvedValue({
+      known: true,
+      firstName: 'Mike',
+      contactName: 'Mike',
+      isCustomer: false,
+      openEnquiry: {
+        reference: 'REQ-AB12CD',
+        status: 'ASSIGNED',
+        eventType: 'Wedding',
+      },
+      upcomingEvent: null,
+    });
+    await expect(say('status')).resolves.toMatch(/REQ-AB12CD/);
+    await expect(say('status')).resolves.toMatch(/with the team/i);
+  });
+
   async function walkToConfirm(): Promise<void> {
     await say('hi');
     await say('1');
@@ -293,6 +371,7 @@ describe('EnquiryFlowService', () => {
     await say('1');
     await say('500');
     await say('Nakuru');
+    await say('skip');
     await say('skip');
     await say('skip');
     await say('Mike');

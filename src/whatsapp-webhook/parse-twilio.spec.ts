@@ -25,6 +25,20 @@ describe('parseTwilioWebhook', () => {
     });
   });
 
+  it('uses the list row id when the customer taps a choice', () => {
+    expect(
+      parseTwilioWebhook({
+        ...SAMPLE_TWILIO_TEXT_WEBHOOK,
+        Body: 'Church event',
+        ListId: 'church',
+        ListTitle: 'Church event',
+      }),
+    ).toMatchObject({
+      text: 'church',
+      phoneNumber: '254711111111',
+    });
+  });
+
   it('ignores delivery status callbacks', () => {
     expect(
       parseTwilioWebhook({

@@ -1,3 +1,5 @@
+import { isLikelyPersonName } from './is-person-name';
+
 export type EnquiryPayload = {
   eventType?: string;
   eventDate?: string;
@@ -6,7 +8,11 @@ export type EnquiryPayload = {
   guestEstimate?: number;
   guestEstimateRaw?: string;
   venue?: string;
+  venueTown?: string;
+  venueSite?: string;
   budgetRange?: string;
+  budgetAmountKes?: number;
+  budgetLooksLow?: boolean;
   additionalDetails?: string;
   wantsCallback?: boolean;
   contactName?: string;
@@ -16,6 +22,7 @@ export type EnquiryPayload = {
   upcomingEventTitle?: string;
   upcomingEventDateDisplay?: string;
   upcomingEventStatus?: string;
+  returnToConfirm?: boolean;
 };
 
 export function identityFromPayload(payload: EnquiryPayload | undefined): {
@@ -23,16 +30,21 @@ export function identityFromPayload(payload: EnquiryPayload | undefined): {
   contactPhone?: string;
   contactPhoneNormalized?: string;
 } {
-  if (!payload?.contactName) {
+  const contactName = isLikelyPersonName(payload?.contactName)
+    ? payload?.contactName
+    : undefined;
+  if (!contactName && !payload?.contactPhoneNormalized) {
     return {};
   }
   return {
-    contactName: payload.contactName,
-    contactPhone: payload.contactPhone,
-    contactPhoneNormalized: payload.contactPhoneNormalized,
+    contactName,
+    contactPhone: payload?.contactPhone,
+    contactPhoneNormalized: payload?.contactPhoneNormalized,
   };
 }
 
 export function hasPrefillIdentity(payload: EnquiryPayload): boolean {
-  return Boolean(payload.contactName && payload.contactPhoneNormalized);
+  return Boolean(
+    isLikelyPersonName(payload.contactName) && payload.contactPhoneNormalized,
+  );
 }

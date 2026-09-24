@@ -1,8 +1,17 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiOrchestratorService } from '../ai-orchestrator/ai-orchestrator.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import {
+  BaileysWhatsappClient,
+  type BaileysInboundNotice,
+} from '../outbound/baileys-whatsapp.client';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { DEFAULT_TENANT_FLOW } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
@@ -10,7 +19,7 @@ import { parseInboundWebhook } from './parse-inbound';
 import { parseTwilioWebhook } from './parse-twilio';
 
 @Injectable()
-export class WhatsappWebhookService {
+export class WhatsappWebhookService implements OnModuleInit {
   private readonly logger = new Logger(WhatsappWebhookService.name);
 
   constructor(
@@ -20,7 +29,14 @@ export class WhatsappWebhookService {
     private readonly orchestrator: AiOrchestratorService,
     private readonly enquiryFlow: EnquiryFlowService,
     private readonly outbound: OutboundMessageService,
+    private readonly baileys: BaileysWhatsappClient,
   ) {}
+
+  onModuleInit(): void {
+    this.baileys.setInboundHandler((message) =>
+      this.handleBaileysInbound(message),
+    );
+  }
 
   verifySubscription(
     mode: string | undefined,
@@ -56,6 +72,33 @@ export class WhatsappWebhookService {
         raw: item.raw,
         channel: 'meta',
       });
+    }
+  }
+
+  async handleBaileysInbound(input: BaileysInboundNotice): Promise<void> {
+    const tenant = await this.tenantResolver.resolveById(input.tenantId);
+    if (!tenant) {
+      this.logger.warn(
+        `No tenant for Baileys inbound tenant=${input.tenantId}`,
+      );
+      return;
+    }
+
+    try {
+      await this.processInbound({
+        tenantId: tenant.id,
+        flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
+        phoneNumber: input.phoneNumber,
+        text: input.text,
+        raw: input.raw,
+        channel: 'baileys',
+      });
+    } catch (error) {
+      this.logger.error(
+        `Baileys inbound processing failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -96,7 +139,7 @@ export class WhatsappWebhookService {
     phoneNumber: string;
     text: string | null;
     raw: unknown;
-    channel: 'meta' | 'twilio';
+    channel: 'meta' | 'twilio' | 'baileys';
   }): Promise<void> {
     const { conversation } = await this.conversations.recordInbound({
       tenantId: input.tenantId,
@@ -105,16 +148,23 @@ export class WhatsappWebhookService {
       raw: input.raw,
     });
 
-    const replyText =
-      input.flow === 'enquiry_intake'
-        ? (await this.enquiryFlow.handleInbound(conversation, input.text))
-            .replyText
-        : (
-            await this.orchestrator.handleInboundMessage(
-              conversation.id,
-              input.text,
-            )
-          ).replyText;
+    let replyText: string;
+    let list: 'event_type' | undefined;
+    if (input.flow === 'enquiry_intake') {
+      const reply = await this.enquiryFlow.handleInbound(
+        conversation,
+        input.text,
+      );
+      replyText = reply.replyText;
+      list = reply.list;
+    } else {
+      replyText = (
+        await this.orchestrator.handleInboundMessage(
+          conversation.id,
+          input.text,
+        )
+      ).replyText;
+    }
 
     await this.outbound.sendAll([
       {
@@ -122,6 +172,8 @@ export class WhatsappWebhookService {
         to: input.phoneNumber,
         text: replyText,
         channel: input.channel,
+        tenantId: input.tenantId,
+        ...(list ? { list } : {}),
       },
     ]);
   }

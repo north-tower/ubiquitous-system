@@ -30,6 +30,20 @@ export class TwilioWhatsappClient implements WhatsappSender {
     to: string,
     body: string,
   ): Promise<{ messageId: string | null; raw: unknown }> {
+    return this.postMessage(to, { Body: body });
+  }
+
+  async sendContent(
+    to: string,
+    contentSid: string,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    return this.postMessage(to, { ContentSid: contentSid });
+  }
+
+  private async postMessage(
+    to: string,
+    fields: Record<string, string>,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
     const accountSid = this.config.get<string>('TWILIO_ACCOUNT_SID');
     const token = this.config.get<string>('TWILIO_AUTH_TOKEN');
     const from = this.config.get<string>('TWILIO_WHATSAPP_FROM');
@@ -42,7 +56,7 @@ export class TwilioWhatsappClient implements WhatsappSender {
     const params = new URLSearchParams({
       From: from.startsWith('whatsapp:') ? from : toWhatsappAddress(from),
       To: toWhatsappAddress(to),
-      Body: body,
+      ...fields,
     });
 
     const response = await fetch(

@@ -1,10 +1,21 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { DashboardBasicAuthGuard } from './dashboard-basic-auth.guard';
+import { DashboardTenantService } from './dashboard-tenant.service';
 import { DashboardService } from './dashboard.service';
 import {
   type ConversationDetail,
   type ConversationListResult,
   type DashboardFunnel,
+  type DashboardTenantSummary,
+  type DashboardTenantWhatsapp,
   type DashboardToday,
   type DemoAnalyticsRow,
 } from './dashboard.types';
@@ -18,7 +29,27 @@ import {
 @Controller('dashboard')
 @UseGuards(DashboardBasicAuthGuard)
 export class DashboardController {
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly tenantLinks: DashboardTenantService,
+  ) {}
+
+  @Post('tenants')
+  createTenant(
+    @Body() body: { name?: unknown; flow?: unknown },
+  ): Promise<{ id: string }> {
+    return this.tenantLinks.create(body ?? {});
+  }
+
+  @Get('tenants')
+  listTenants(): Promise<DashboardTenantSummary[]> {
+    return this.tenantLinks.list();
+  }
+
+  @Get('tenants/:id/whatsapp')
+  tenantWhatsapp(@Param('id') id: string): Promise<DashboardTenantWhatsapp> {
+    return this.tenantLinks.whatsapp(id);
+  }
 
   @Get('today')
   async today(@Query('tenantId') tenantId?: string): Promise<DashboardToday> {

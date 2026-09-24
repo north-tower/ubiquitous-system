@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import {
@@ -14,6 +15,7 @@ export class WhatsappSendRouter {
     private readonly config: ConfigService,
     private readonly meta: MetaWhatsappClient,
     private readonly twilio: TwilioWhatsappClient,
+    private readonly baileys: BaileysWhatsappClient,
   ) {}
 
   configuredChannels(): WhatsappChannel[] {
@@ -26,11 +28,12 @@ export class WhatsappSendRouter {
     to: string,
     body: string,
     preferred?: WhatsappChannel,
+    tenantId?: string,
   ): Promise<WhatsappSendResult> {
     const order = this.order(preferred);
     if (order.length === 0) {
       throw new Error(
-        'No WhatsApp provider is configured. Set Meta or Twilio credentials.',
+        'No WhatsApp provider is configured. Set Baileys, Meta, or Twilio credentials.',
       );
     }
 
@@ -40,7 +43,10 @@ export class WhatsappSendRouter {
     let lastError: unknown;
     for (const [index, sender] of order.entries()) {
       try {
-        const result = await sender.sendText(to, body);
+        const result =
+          sender.channel === 'baileys' && tenantId
+            ? await sender.sendText(to, body, tenantId)
+            : await sender.sendText(to, body);
         return { channel: sender.channel, ...result };
       } catch (error) {
         lastError = error;
@@ -54,6 +60,19 @@ export class WhatsappSendRouter {
     throw lastError instanceof Error
       ? lastError
       : new Error('WhatsApp send failed');
+  }
+
+  async sendContent(
+    to: string,
+    contentSid: string,
+  ): Promise<WhatsappSendResult> {
+    if (!this.twilio.isConfigured()) {
+      throw new Error(
+        'Twilio is not configured. A list template can only be sent through Twilio.',
+      );
+    }
+    const result = await this.twilio.sendContent(to, contentSid);
+    return { channel: 'twilio', ...result };
   }
 
   private order(preferred?: WhatsappChannel): WhatsappSender[] {
@@ -78,15 +97,21 @@ export class WhatsappSendRouter {
   }
 
   private senders(): WhatsappSender[] {
-    if (this.primaryChannel() === 'twilio') {
-      return [this.twilio, this.meta];
+    const primary = this.primaryChannel();
+    if (primary === 'baileys') {
+      return [this.baileys, this.meta, this.twilio];
     }
-    return [this.meta, this.twilio];
+    if (primary === 'meta') {
+      return [this.meta, this.twilio, this.baileys];
+    }
+    return [this.twilio, this.meta, this.baileys];
   }
 
   private primaryChannel(): WhatsappChannel {
-    return this.config.get<string>('WHATSAPP_PRIMARY_CHANNEL') === 'meta'
-      ? 'meta'
-      : 'twilio';
+    const configured = this.config.get<string>('WHATSAPP_PRIMARY_CHANNEL');
+    if (configured === 'meta' || configured === 'baileys') {
+      return configured;
+    }
+    return 'twilio';
   }
 }

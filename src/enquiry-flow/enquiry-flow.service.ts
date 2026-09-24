@@ -6,7 +6,10 @@ import { matchHandoverCommand } from '../state-machine/match-handover-command';
 import { matchResetCommand } from '../state-machine/match-reset-command';
 import * as copy from './enquiry-copy';
 import {
+  BUDGET_CONFIRM_OPTIONS,
+  BUDGET_OPTIONS,
   CONFIRM_OPTIONS,
+  EDIT_FIELD_OPTIONS,
   EVENT_TYPE_OPTIONS,
   RETURNING_OPTIONS,
   SERVICE_OPTIONS,
@@ -19,12 +22,15 @@ import {
 import { EnquirySession } from './enquiry-session.entity';
 import { EnquirySessionService } from './enquiry-session.service';
 import { ENQUIRY_STEPS } from './enquiry-steps';
+import { isLikelyPersonName } from './is-person-name';
 import {
   looksLikeFailedOptionNumber,
   matchNumberedOption,
   matchNumberedOptions,
 } from './match-numbered-option';
 import { matchSkipCommand } from './match-skip-command';
+import { matchStatusCommand } from './match-status-command';
+import { BUDGET_BAND_AMOUNTS, budgetLooksLow, parseBudget } from './parse-budget';
 import {
   formatIsoDateDisplay,
   parseEventDate,
@@ -34,10 +40,16 @@ import {
   formatKenyanPhoneDisplay,
   parseKenyanPhone,
 } from './parse-kenyan-phone';
+import { combineVenue, parseVenue } from './parse-venue';
 
 type StartOptions = {
   forceNew?: boolean;
   forgetIdentity?: boolean;
+};
+
+export type EnquiryReply = {
+  replyText: string;
+  list?: 'event_type';
 };
 
 @Injectable()
@@ -52,7 +64,7 @@ export class EnquiryFlowService {
   async handleInbound(
     conversation: Conversation,
     userText: string | null,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const text = userText?.trim() ?? '';
 
     if (matchResetCommand(text)) {
@@ -62,6 +74,10 @@ export class EnquiryFlowService {
 
     if (matchHandoverCommand(text)) {
       return this.handover(conversation);
+    }
+
+    if (matchStatusCommand(text)) {
+      return this.reportStatus(conversation);
     }
 
     const active = await this.sessions.findActive(conversation.id);
@@ -80,7 +96,7 @@ export class EnquiryFlowService {
   private async start(
     conversation: Conversation,
     options: StartOptions = {},
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const seed = await this.seedIdentity(conversation, options);
 
     if (
@@ -100,18 +116,16 @@ export class EnquiryFlowService {
       ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
       identityFromPayload(seed),
     );
-    return {
-      replyText: seed.contactName
-        ? copy.welcomeBack(seed.contactName)
-        : copy.GREETING,
-    };
+    return eventTypeListReply(
+      seed.contactName ? copy.welcomeBack(seed.contactName) : copy.GREETING,
+    );
   }
 
   private async continueSession(
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     switch (session.currentStep) {
       case ENQUIRY_STEPS.AWAITING_RETURNING_CHOICE:
         return this.captureReturningChoice(session, text);
@@ -125,8 +139,12 @@ export class EnquiryFlowService {
         return this.captureGuests(session, text);
       case ENQUIRY_STEPS.AWAITING_VENUE:
         return this.captureVenue(session, text);
+      case ENQUIRY_STEPS.AWAITING_VENUE_SITE:
+        return this.captureVenueSite(session, text);
       case ENQUIRY_STEPS.AWAITING_BUDGET:
         return this.captureBudget(session, text);
+      case ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM:
+        return this.captureBudgetConfirm(session, text);
       case ENQUIRY_STEPS.AWAITING_DETAILS:
         return this.captureDetails(conversation, session, text);
       case ENQUIRY_STEPS.AWAITING_NAME:
@@ -135,17 +153,19 @@ export class EnquiryFlowService {
         return this.capturePhone(conversation, session, text);
       case ENQUIRY_STEPS.AWAITING_HANDOVER_NAME:
         return this.captureHandoverName(conversation, session, text);
+      case ENQUIRY_STEPS.AWAITING_EDIT_FIELD:
+        return this.captureEditField(conversation, session, text);
       case ENQUIRY_STEPS.AWAITING_CONFIRM:
         return this.captureConfirm(conversation, session, text);
       default:
-        return { replyText: copy.GREETING };
+        return eventTypeListReply(copy.GREETING);
     }
   }
 
   private async captureReturningChoice(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const matched = matchNumberedOption(text, RETURNING_OPTIONS);
     if (!matched) {
       return { replyText: copy.REASK_RETURNING };
@@ -157,120 +177,223 @@ export class EnquiryFlowService {
       step: ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
       payload: identityFromPayload(session.payload),
     });
-    return {
-      replyText: session.payload.contactName
+    return eventTypeListReply(
+      session.payload.contactName
         ? copy.welcomeBack(session.payload.contactName)
         : copy.GREETING,
-    };
+    );
   }
 
   private async captureEventType(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const matched = matchNumberedOption(text, EVENT_TYPE_OPTIONS);
     if (!matched) {
-      return { replyText: copy.REASK_EVENT_TYPE };
+      return eventTypeListReply(copy.REASK_EVENT_TYPE);
     }
-    await this.sessions.save(session, {
+    return this.afterField(session, { eventType: matched.label }, {
       step: ENQUIRY_STEPS.AWAITING_DATE,
-      payload: { ...session.payload, eventType: matched.label },
+      replyText: copy.ASK_DATE,
     });
-    return { replyText: copy.ASK_DATE };
   }
 
   private async captureDate(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const parsed = parseEventDate(text);
     if (!parsed) {
       return { replyText: copy.REASK_DATE };
     }
-    await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_SERVICES,
-      payload: {
-        ...session.payload,
-        eventDate: parsed.iso,
-        eventDateDisplay: parsed.display,
-      },
-    });
-    return { replyText: copy.ASK_SERVICES };
+    return this.afterField(
+      session,
+      { eventDate: parsed.iso, eventDateDisplay: parsed.display },
+      { step: ENQUIRY_STEPS.AWAITING_SERVICES, replyText: copy.ASK_SERVICES },
+    );
   }
 
   private async captureServices(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const requestedServices = readServices(text);
     if (!requestedServices) {
       return { replyText: copy.REASK_SERVICES };
     }
-    await this.sessions.save(session, {
+    return this.afterField(session, { requestedServices }, {
       step: ENQUIRY_STEPS.AWAITING_GUESTS,
-      payload: { ...session.payload, requestedServices },
+      replyText: copy.ASK_GUESTS,
     });
-    return { replyText: copy.ASK_GUESTS };
   }
 
   private async captureGuests(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const parsed = parseGuestCount(text);
     if (!parsed) {
       return { replyText: copy.REASK_GUESTS };
     }
-    await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_VENUE,
-      payload: {
-        ...session.payload,
-        guestEstimate: parsed.estimate,
-        guestEstimateRaw: parsed.raw,
-      },
-    });
-    return { replyText: copy.ASK_VENUE };
+    return this.afterField(
+      session,
+      { guestEstimate: parsed.estimate, guestEstimateRaw: parsed.raw },
+      { step: ENQUIRY_STEPS.AWAITING_VENUE, replyText: copy.ASK_VENUE },
+    );
   }
 
   private async captureVenue(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
-    const venue = text.trim();
-    if (!venue) {
+  ): Promise<EnquiryReply> {
+    const parsed = parseVenue(text);
+    if (!parsed) {
       return { replyText: copy.REASK_VENUE };
     }
-    await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_BUDGET,
-      payload: { ...session.payload, venue },
-    });
-    return { replyText: copy.ASK_BUDGET };
+    if (parsed.needsSite) {
+      const payload = {
+        ...session.payload,
+        venue: parsed.display,
+        venueTown: parsed.town,
+        venueSite: undefined,
+      };
+      await this.sessions.save(session, {
+        step: ENQUIRY_STEPS.AWAITING_VENUE_SITE,
+        payload,
+      });
+      return { replyText: copy.ASK_VENUE_SITE };
+    }
+    return this.afterField(
+      session,
+      {
+        venue: parsed.display,
+        venueTown: parsed.town,
+        venueSite: parsed.site,
+      },
+      { step: ENQUIRY_STEPS.AWAITING_BUDGET, replyText: copy.ASK_BUDGET },
+    );
+  }
+
+  private async captureVenueSite(
+    session: EnquirySession,
+    text: string,
+  ): Promise<EnquiryReply> {
+    const town = session.payload.venueTown ?? session.payload.venue ?? '';
+    const site = matchSkipCommand(text) ? undefined : text.trim();
+    if (!site && !matchSkipCommand(text)) {
+      return { replyText: copy.REASK_VENUE_SITE };
+    }
+    if (site && site.length < 2) {
+      return { replyText: copy.REASK_VENUE_SITE };
+    }
+    const parsedSite = site ? parseVenue(site) : null;
+    const siteName = parsedSite?.site ?? parsedSite?.display ?? site;
+    return this.afterField(
+      session,
+      {
+        venueTown: town,
+        venueSite: siteName,
+        venue: combineVenue(town, siteName),
+      },
+      { step: ENQUIRY_STEPS.AWAITING_BUDGET, replyText: copy.ASK_BUDGET },
+    );
   }
 
   private async captureBudget(
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
-    if (!text && !matchSkipCommand(text)) {
+  ): Promise<EnquiryReply> {
+    const band = matchNumberedOption(text, BUDGET_OPTIONS);
+    const skipped = matchSkipCommand(text) || band?.id === 'unsure';
+    if (skipped) {
+      return this.afterField(
+        session,
+        {
+          budgetRange: undefined,
+          budgetAmountKes: undefined,
+          budgetLooksLow: undefined,
+        },
+        { step: ENQUIRY_STEPS.AWAITING_DETAILS, replyText: copy.ASK_DETAILS },
+      );
+    }
+
+    const parsed = band
+      ? {
+          display: band.label,
+          amountKes: BUDGET_BAND_AMOUNTS[band.id] ?? null,
+        }
+      : parseBudget(text);
+    if (!parsed) {
       return { replyText: copy.REASK_BUDGET };
     }
-    const budgetRange = matchSkipCommand(text) ? undefined : text;
-    await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_DETAILS,
-      payload: { ...session.payload, budgetRange },
+
+    const looksLow = budgetLooksLow({
+      amountKes: parsed.amountKes,
+      guests: session.payload.guestEstimate,
+      services: session.payload.requestedServices,
     });
-    return { replyText: copy.ASK_DETAILS };
+    const budgetPayload = {
+      budgetRange: parsed.display,
+      budgetAmountKes: parsed.amountKes ?? undefined,
+      budgetLooksLow: looksLow || undefined,
+    };
+    if (looksLow) {
+      await this.sessions.save(session, {
+        step: ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM,
+        payload: { ...session.payload, ...budgetPayload },
+      });
+      return { replyText: copy.askBudgetLow(parsed.display) };
+    }
+    return this.afterField(session, budgetPayload, {
+      step: ENQUIRY_STEPS.AWAITING_DETAILS,
+      replyText: copy.ASK_DETAILS,
+    });
+  }
+
+  private async captureBudgetConfirm(
+    session: EnquirySession,
+    text: string,
+  ): Promise<EnquiryReply> {
+    const matched = matchNumberedOption(text, BUDGET_CONFIRM_OPTIONS);
+    if (!matched) {
+      return { replyText: copy.REASK_BUDGET_CONFIRM };
+    }
+    if (matched.id === 'adjust') {
+      await this.sessions.save(session, {
+        step: ENQUIRY_STEPS.AWAITING_BUDGET,
+        payload: {
+          ...session.payload,
+          budgetRange: undefined,
+          budgetAmountKes: undefined,
+          budgetLooksLow: undefined,
+        },
+      });
+      return { replyText: copy.ASK_BUDGET };
+    }
+    return this.afterField(session, { budgetLooksLow: true }, {
+      step: ENQUIRY_STEPS.AWAITING_DETAILS,
+      replyText: copy.ASK_DETAILS,
+    });
   }
 
   private async captureDetails(
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     if (!text && !matchSkipCommand(text)) {
       return { replyText: copy.REASK_DETAILS };
     }
     const additionalDetails = matchSkipCommand(text) ? undefined : text;
+    if (session.payload.returnToConfirm) {
+      return this.afterField(session, { additionalDetails }, {
+        step: ENQUIRY_STEPS.AWAITING_CONFIRM,
+        replyText: copy.confirmationPlayback({
+          ...session.payload,
+          additionalDetails,
+        }),
+      });
+    }
     const updated = await this.sessions.save(session, {
       step: session.currentStep,
       payload: { ...session.payload, additionalDetails },
@@ -282,10 +405,19 @@ export class EnquiryFlowService {
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const contactName = text.trim();
-    if (!contactName) {
+    if (!isLikelyPersonName(contactName)) {
       return { replyText: copy.REASK_NAME };
+    }
+    if (session.payload.returnToConfirm) {
+      return this.afterField(session, { contactName }, {
+        step: ENQUIRY_STEPS.AWAITING_CONFIRM,
+        replyText: copy.confirmationPlayback({
+          ...session.payload,
+          contactName,
+        }),
+      });
     }
     await this.sessions.save(session, {
       step: ENQUIRY_STEPS.AWAITING_PHONE,
@@ -298,7 +430,7 @@ export class EnquiryFlowService {
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const fromWhatsapp = parseKenyanPhone(conversation.prospectPhone);
     const choseWhatsapp = /^\s*1\s*[.)]?\s*$/.test(text);
     const normalized = choseWhatsapp ? fromWhatsapp : parseKenyanPhone(text);
@@ -307,29 +439,35 @@ export class EnquiryFlowService {
       return { replyText: copy.REASK_PHONE };
     }
 
-    const updated = await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_CONFIRM,
-      payload: {
-        ...session.payload,
+    return this.afterField(
+      session,
+      {
         contactPhone: formatKenyanPhoneDisplay(normalized),
         contactPhoneNormalized: normalized,
       },
-    });
-    return { replyText: copy.confirmationPlayback(updated.payload) };
+      {
+        step: ENQUIRY_STEPS.AWAITING_CONFIRM,
+        replyText: copy.confirmationPlayback({
+          ...session.payload,
+          contactPhone: formatKenyanPhoneDisplay(normalized),
+          contactPhoneNormalized: normalized,
+        }),
+      },
+    );
   }
 
   private async captureHandoverName(
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const contactName = text.trim();
-    if (!contactName) {
+    if (!isLikelyPersonName(contactName)) {
       return { replyText: copy.REASK_NAME };
     }
     const phone = phoneFrom(conversation, session.payload);
     const updated = await this.sessions.save(session, {
-      step: ENQUIRY_STEPS.AWAITING_HANDOVER_NAME,
+      step: session.currentStep,
       payload: {
         ...session.payload,
         contactName,
@@ -340,21 +478,41 @@ export class EnquiryFlowService {
     return this.submit(conversation, updated);
   }
 
+  private async captureEditField(
+    conversation: Conversation,
+    session: EnquirySession,
+    text: string,
+  ): Promise<EnquiryReply> {
+    const matched = matchNumberedOption(text, EDIT_FIELD_OPTIONS);
+    if (!matched) {
+      return { replyText: copy.REASK_EDIT_FIELD };
+    }
+    const next = editTarget(matched.id, conversation);
+    if (!next) {
+      return { replyText: copy.REASK_EDIT_FIELD };
+    }
+    await this.sessions.save(session, {
+      step: next.step,
+      payload: { ...session.payload, returnToConfirm: true },
+    });
+    return { replyText: next.replyText, list: next.list };
+  }
+
   private async captureConfirm(
     conversation: Conversation,
     session: EnquirySession,
     text: string,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const matched = matchNumberedOption(text, CONFIRM_OPTIONS);
     if (!matched) {
       return { replyText: copy.REASK_CONFIRM };
     }
-    if (matched.id === 'restart') {
-      await this.sessions.closeOpen(conversation.id);
-      return this.start(conversation, {
-        forceNew: true,
-        forgetIdentity: true,
+    if (matched.id === 'edit') {
+      await this.sessions.save(session, {
+        step: ENQUIRY_STEPS.AWAITING_EDIT_FIELD,
+        payload: { ...session.payload, returnToConfirm: true },
       });
+      return { replyText: copy.ASK_EDIT_FIELD };
     }
     return this.submit(conversation, session);
   }
@@ -362,7 +520,7 @@ export class EnquiryFlowService {
   private async afterDetails(
     conversation: Conversation,
     session: EnquirySession,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     if (hasPrefillIdentity(session.payload)) {
       const updated = await this.sessions.save(session, {
         step: ENQUIRY_STEPS.AWAITING_CONFIRM,
@@ -370,7 +528,7 @@ export class EnquiryFlowService {
       });
       return { replyText: copy.confirmationPlayback(updated.payload) };
     }
-    if (session.payload.contactName) {
+    if (isLikelyPersonName(session.payload.contactName)) {
       await this.sessions.save(session, {
         step: ENQUIRY_STEPS.AWAITING_PHONE,
         payload: session.payload,
@@ -384,9 +542,31 @@ export class EnquiryFlowService {
     return { replyText: copy.ASK_NAME };
   }
 
+  private async afterField(
+    session: EnquirySession,
+    patch: EnquiryPayload,
+    sequential: { step: string; replyText: string },
+  ): Promise<EnquiryReply> {
+    const editing = session.payload.returnToConfirm === true;
+    const payload: EnquiryPayload = {
+      ...session.payload,
+      ...patch,
+    };
+    if (editing) {
+      delete payload.returnToConfirm;
+    }
+    const step = editing ? ENQUIRY_STEPS.AWAITING_CONFIRM : sequential.step;
+    const updated = await this.sessions.save(session, { step, payload });
+    return {
+      replyText: editing
+        ? copy.confirmationPlayback(updated.payload)
+        : sequential.replyText,
+    };
+  }
+
   private async handover(
     conversation: Conversation,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     const active = await this.sessions.findActive(conversation.id);
     const latest = await this.sessions.findLatest(conversation.id);
     if (!active && latest?.reference) {
@@ -409,7 +589,7 @@ export class EnquiryFlowService {
       payload: { ...session.payload, wantsCallback: true },
     });
 
-    if (named.payload.contactName) {
+    if (isLikelyPersonName(named.payload.contactName)) {
       const withPhone = await this.sessions.save(named, {
         step: named.currentStep,
         payload: {
@@ -430,7 +610,7 @@ export class EnquiryFlowService {
   private async submit(
     conversation: Conversation,
     session: EnquirySession,
-  ): Promise<{ replyText: string }> {
+  ): Promise<EnquiryReply> {
     if (!this.divineBudget.isConfigured()) {
       this.logger.error(
         `Divine Budget client is not configured conversation=${conversation.id}`,
@@ -439,13 +619,20 @@ export class EnquiryFlowService {
     }
 
     const whatsappPhone = parseKenyanPhone(conversation.prospectPhone);
-    if (!whatsappPhone || !session.payload.contactName) {
-      return { replyText: copy.REASK_PHONE };
+    if (!whatsappPhone || !isLikelyPersonName(session.payload.contactName)) {
+      return { replyText: copy.REASK_NAME };
     }
+
+    const notes = [
+      session.payload.additionalDetails,
+      session.payload.budgetLooksLow ? copy.STAFF_BUDGET_FLAG : undefined,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     try {
       const result = await this.divineBudget.submitEnquiry({
-        contactName: session.payload.contactName,
+        contactName: session.payload.contactName as string,
         contactPhone:
           session.payload.contactPhoneNormalized ??
           session.payload.contactPhone ??
@@ -457,7 +644,7 @@ export class EnquiryFlowService {
         guestEstimate: session.payload.guestEstimate,
         guestEstimateRaw: session.payload.guestEstimateRaw,
         requestedServices: session.payload.requestedServices,
-        notes: session.payload.additionalDetails,
+        notes: notes || undefined,
         budgetRange: session.payload.budgetRange,
         wantsCallback: Boolean(session.payload.wantsCallback),
         idempotencyKey: session.id,
@@ -476,6 +663,34 @@ export class EnquiryFlowService {
     }
   }
 
+  private async reportStatus(
+    conversation: Conversation,
+  ): Promise<EnquiryReply> {
+    const active = await this.sessions.findActive(conversation.id);
+    if (active && !active.reference) {
+      return {
+        replyText: copy.statusReply({
+          reference: null,
+          status: null,
+          inProgress: true,
+        }),
+      };
+    }
+
+    const latest = await this.sessions.findLatest(conversation.id);
+    const whatsapp = parseKenyanPhone(conversation.prospectPhone);
+    const lookup = await this.lookupQuietly(whatsapp);
+    const open = lookup?.known ? lookup.openEnquiry : null;
+
+    return {
+      replyText: copy.statusReply({
+        reference: open?.reference ?? latest?.reference ?? null,
+        status: open?.status ?? null,
+        inProgress: false,
+      }),
+    };
+  }
+
   private async seedIdentity(
     conversation: Conversation,
     options: StartOptions,
@@ -489,9 +704,11 @@ export class EnquiryFlowService {
       ? null
       : await this.lookupQuietly(whatsapp);
 
-    const contactName =
-      fromSession.contactName ??
-      (lookup?.known ? (lookup.contactName ?? undefined) : undefined);
+    const lookedUpName =
+      lookup?.known && isLikelyPersonName(lookup.contactName)
+        ? (lookup.contactName ?? undefined)
+        : undefined;
+    const contactName = fromSession.contactName ?? lookedUpName;
     const contactPhoneNormalized =
       fromSession.contactPhoneNormalized ?? whatsapp ?? undefined;
     const contactPhone =
@@ -537,6 +754,10 @@ export class EnquiryFlowService {
   }
 }
 
+function eventTypeListReply(replyText: string): EnquiryReply {
+  return { replyText, list: 'event_type' };
+}
+
 function readServices(text: string): string | null {
   const matched = matchNumberedOptions(text, SERVICE_OPTIONS);
   if (matched && matched.length > 0) {
@@ -571,4 +792,51 @@ function phoneFrom(
     contactPhoneNormalized: normalized,
     contactPhone: formatKenyanPhoneDisplay(normalized),
   };
+}
+
+function editTarget(
+  fieldId: string,
+  conversation: Conversation,
+): { step: string; replyText: string; list?: 'event_type' } | null {
+  switch (fieldId) {
+    case 'eventType':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
+        replyText: copy.ASK_EVENT_TYPE,
+        list: 'event_type',
+      };
+    case 'date':
+      return { step: ENQUIRY_STEPS.AWAITING_DATE, replyText: copy.ASK_DATE };
+    case 'services':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_SERVICES,
+        replyText: copy.ASK_SERVICES,
+      };
+    case 'guests':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_GUESTS,
+        replyText: copy.ASK_GUESTS,
+      };
+    case 'venue':
+      return { step: ENQUIRY_STEPS.AWAITING_VENUE, replyText: copy.ASK_VENUE };
+    case 'budget':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_BUDGET,
+        replyText: copy.ASK_BUDGET,
+      };
+    case 'details':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_DETAILS,
+        replyText: copy.ASK_DETAILS,
+      };
+    case 'name':
+      return { step: ENQUIRY_STEPS.AWAITING_NAME, replyText: copy.ASK_NAME };
+    case 'phone':
+      return {
+        step: ENQUIRY_STEPS.AWAITING_PHONE,
+        replyText: copy.askPhone(whatsappDisplay(conversation)),
+      };
+    default:
+      return null;
+  }
 }

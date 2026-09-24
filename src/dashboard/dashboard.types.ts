@@ -1,5 +1,7 @@
+import { type BaileysSessionStatus } from '../outbound/baileys-session';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { type LeadScore } from '../lead/lead-profile.entity';
+import { type TenantFlow } from '../tenant/tenant-flow';
 
 export type DashboardToday = {
   whatsappConversations: number;
@@ -88,4 +90,18 @@ export type DemoAnalyticsRow = {
   completed: number;
   leads: number;
   meetings: number;
+};
+
+export type DashboardTenantSummary = {
+  id: string;
+  name: string;
+  flow: TenantFlow;
+  linkedPhone: string | null;
+  status: BaileysSessionStatus | null;
+};
+
+export type DashboardTenantWhatsapp = {
+  status: BaileysSessionStatus | null;
+  linkedPhone: string | null;
+  qrDataUrl: string | null;
 };
