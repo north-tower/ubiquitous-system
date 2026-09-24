@@ -12,6 +12,8 @@ describe('DemoEngineRegistry', () => {
   it('returns the salon and solar engines by mode', () => {
     expect(registry.get('salon').mode).toBe('salon');
     expect(registry.get('solar').mode).toBe('solar');
+    expect(registry.get('dental').mode).toBe('dental');
+    expect(registry.get('events').mode).toBe('events');
   });
 
   it('throws a clear error for an unregistered mode like furniture', () => {

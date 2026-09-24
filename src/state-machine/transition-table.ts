@@ -11,6 +11,7 @@ export const TRANSITION_TABLE: {
   [ConversationState.TECHFIND_GREETING]: [
     ConversationState.INDUSTRY_DISCOVERY,
     ConversationState.BUSINESS_QUALIFICATION,
+    ConversationState.DEMO_SELECTED,
     ConversationState.TECHFIND_GREETING,
   ],
   [ConversationState.INDUSTRY_DISCOVERY]: [
@@ -31,6 +32,8 @@ export const TRANSITION_TABLE: {
   ],
   [ConversationState.VALUE_REVEAL]: [
     ConversationState.BUSINESS_QUALIFICATION,
+    ConversationState.MEETING_OFFERED,
+    ConversationState.DEMO_SELECTED,
     ConversationState.TECHFIND_GREETING,
   ],
   [ConversationState.BUSINESS_QUALIFICATION]: [
@@ -44,6 +47,7 @@ export const TRANSITION_TABLE: {
   [ConversationState.MEETING_OFFERED]: [
     ConversationState.MEETING_BOOKED,
     ConversationState.HUMAN_HANDOFF,
+    ConversationState.DEMO_SELECTED,
     ConversationState.TECHFIND_GREETING,
   ],
   [ConversationState.MEETING_BOOKED]: [ConversationState.TECHFIND_GREETING],

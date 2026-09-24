@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Conversation } from '../conversation/conversation.entity';
+import { DemoSimulationService } from '../demo-engine/demo-simulation.service';
 import { LeadProfileService } from '../lead/lead-profile.service';
 import { LeadScoringService } from '../lead/lead-scoring.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
@@ -56,6 +57,12 @@ describe('TechfindIntakeFlowService', () => {
   const config = {
     get: jest.fn(),
   };
+  const demos = {
+    start: jest.fn(),
+    handleInput: jest.fn(),
+    findActive: jest.fn(),
+    closeOpen: jest.fn(),
+  };
 
   function createService(): TechfindIntakeFlowService {
     return new TechfindIntakeFlowService(
@@ -63,6 +70,7 @@ describe('TechfindIntakeFlowService', () => {
       stateMachine as unknown as ConversationStateMachineService,
       leadProfiles as unknown as LeadProfileService,
       scoring,
+      demos as unknown as DemoSimulationService,
       config as unknown as ConfigService,
     );
   }
@@ -103,6 +111,8 @@ describe('TechfindIntakeFlowService', () => {
     });
     leadProfiles.save.mockImplementation(async (p) => p);
     config.get.mockReturnValue(undefined);
+    demos.closeOpen.mockResolvedValue(undefined);
+    demos.findActive.mockResolvedValue(null);
   });
 
   it('opens with the Techfind service menu', async () => {
@@ -158,5 +168,74 @@ describe('TechfindIntakeFlowService', () => {
     );
 
     expect(stateMachine.enterHumanHandoff).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('opens the PLAAGG industry menu after plaagg qualification', async () => {
+    sessions.findActive.mockResolvedValue(
+      session({
+        currentStep: TECHFIND_INTAKE_STEPS.AWAITING_QUALIFICATION,
+        payload: {
+          serviceId: 'plaagg',
+          contactName: 'Jane',
+          businessName: 'Acme Ltd',
+        },
+      }),
+    );
+
+    const reply = await createService().handleInbound(
+      conversation({ currentState: ConversationState.TECHFIND_GREETING }),
+      'Want to see solar and salon demos',
+    );
+
+    expect(sessions.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_INDUSTRY,
+      }),
+    );
+    expect(sessions.markComplete).not.toHaveBeenCalled();
+    expect(reply.replyText).toMatch(/Solar/);
+    expect(reply.replyText).toMatch(/logged your details/i);
+  });
+
+  it('shows PLAAGG business insight after a demo completes', async () => {
+    sessions.findActive.mockResolvedValue(
+      session({
+        currentStep: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_DEMO,
+        payload: {
+          serviceId: 'plaagg',
+          contactName: 'Jane',
+          businessName: 'Acme Ltd',
+          plaaggIndustryId: 'dental',
+          plaaggIndustryLabel: 'Dental',
+          plaaggDemoMode: 'dental',
+        },
+      }),
+    );
+    demos.findActive.mockResolvedValue({
+      id: 'sim-1',
+      conversationId: 'conv-1',
+      demoMode: 'dental',
+      currentStep: 'script_service',
+      payload: {},
+      completedAt: null,
+      createdAt: new Date(),
+    });
+    demos.handleInput.mockResolvedValue({
+      result: {
+        replyText: 'Simulated dental enquiry logged',
+        isComplete: true,
+        updatedPayload: {},
+        nextStep: 'script_complete',
+      },
+    });
+
+    const reply = await createService().handleInbound(
+      conversation({ currentState: ConversationState.DEMO_RUNNING }),
+      'Weekend',
+    );
+
+    expect(reply.replyText).toMatch(/Pipeline stage/i);
+    expect(reply.replyText).toMatch(/Book a personalized demo/i);
   });
 });

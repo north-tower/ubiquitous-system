@@ -16,6 +16,7 @@ export class DemoSimulationService {
   async start(
     conversationId: string,
     demoMode: string,
+    options?: { initialPayload?: Record<string, unknown> },
   ): Promise<{ simulation: DemoSimulation; result: DemoStepResult }> {
     const engine = this.registry.get(demoMode);
     const created = await this.simulations.save(
@@ -23,7 +24,7 @@ export class DemoSimulationService {
         conversationId,
         demoMode,
         currentStep: 'start',
-        payload: {},
+        payload: options?.initialPayload ?? {},
         completedAt: null,
       }),
     );

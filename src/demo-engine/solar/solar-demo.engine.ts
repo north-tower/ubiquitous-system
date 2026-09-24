@@ -178,18 +178,24 @@ export class SolarDemoEngine implements DemoEngine {
       'This is not a binding solar quote and not a Techfind sale.',
     ].join('\n');
 
-    const valueReveal = renderValueRevealMessage({
-      demoKind: 'solar qualification demo',
-      bullets: [
-        `Matched property type to a fixture option (${propertyLabel}).`,
-        `Parsed a monthly spend figure (${formatKes(spendKes)}) with deterministic rules — no AI.`,
-        `Mapped that spend onto a fixed recommendation tier (${tier.label}).`,
-        "Stored the result only on this conversation's demo payload — not shared with other prospects.",
-      ],
-    });
+    const valueReveal = nextPayload.plaaggExplore
+      ? ''
+      : renderValueRevealMessage({
+          demoKind: 'solar qualification demo',
+          bullets: [
+            `Matched property type to a fixture option (${propertyLabel}).`,
+            `Parsed a monthly spend figure (${formatKes(spendKes)}) with deterministic rules — no AI.`,
+            `Mapped that spend onto a fixed recommendation tier (${tier.label}).`,
+            "Stored the result only on this conversation's demo payload — not shared with other prospects.",
+          ],
+        });
+
+    const body = valueReveal
+      ? `${summary}\n\n${valueReveal}`
+      : withDisclaimer(summary, { trailing: true });
 
     return {
-      replyText: `${summary}\n\n${valueReveal}`,
+      replyText: body,
       updatedPayload: nextPayload,
       nextStep: SOLAR_STEPS.COMPLETE,
       isComplete: true,

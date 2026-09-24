@@ -175,18 +175,24 @@ export class SalonDemoEngine implements DemoEngine {
       'Nothing was reserved at a real salon.',
     ].join('\n');
 
-    const valueReveal = renderValueRevealMessage({
-      demoKind: 'salon booking demo',
-      bullets: [
-        `Matched the message to a fixture service (${serviceName}).`,
-        `Looked up a fixed demo price (${formatKes(priceKes)}).`,
-        `Offered a canned "tomorrow" slot list and stored ${slot.label}.`,
-        "Wrote a simulated booking into this conversation's demo payload only — isolated from other prospects.",
-      ],
-    });
+    const valueReveal = nextPayload.plaaggExplore
+      ? ''
+      : renderValueRevealMessage({
+          demoKind: 'salon booking demo',
+          bullets: [
+            `Matched the message to a fixture service (${serviceName}).`,
+            `Looked up a fixed demo price (${formatKes(priceKes)}).`,
+            `Offered a canned "tomorrow" slot list and stored ${slot.label}.`,
+            "Wrote a simulated booking into this conversation's demo payload only — isolated from other prospects.",
+          ],
+        });
+
+    const body = valueReveal
+      ? `${confirmation}\n\n${valueReveal}`
+      : withDisclaimer(confirmation, { trailing: true });
 
     return {
-      replyText: `${confirmation}\n\n${valueReveal}`,
+      replyText: body,
       updatedPayload: nextPayload,
       nextStep: SALON_STEPS.COMPLETE,
       isComplete: true,

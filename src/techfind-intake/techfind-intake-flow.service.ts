@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Conversation } from '../conversation/conversation.entity';
+import { DemoSimulationService } from '../demo-engine/demo-simulation.service';
 import { isLikelyPersonName } from '../enquiry-flow/is-person-name';
 import {
   matchNumberedOption,
@@ -13,6 +14,15 @@ import { ConversationStateMachineService } from '../state-machine/conversation-s
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import { matchHandoverCommand } from '../state-machine/match-handover-command';
 import { matchResetCommand } from '../state-machine/match-reset-command';
+import * as plaaggCopy from './plaagg-copy';
+import { PLAAGG_FINISH_OPTIONS } from './plaagg-finish-options';
+import {
+  PLAAGG_INDUSTRY_OPTIONS,
+  plaaggIndustryLabel,
+  plaaggIndustryToDemoMode,
+  type PlaaggIndustryId,
+} from './plaagg-industry-options';
+import { buildPlaaggInsightContext } from './plaagg-simulated-insights';
 import * as copy from './techfind-intake-copy';
 import type { TechfindIntakePayload } from './techfind-intake-payload';
 import { TECHFIND_INTAKE_STEPS } from './techfind-intake-steps';
@@ -29,6 +39,8 @@ export type TechfindIntakeReply = {
 };
 
 const MENU_OPTIONS: readonly NumberedOption[] = TECHFIND_MENU_OPTIONS;
+const PLAAGG_OPTIONS: readonly NumberedOption[] = PLAAGG_INDUSTRY_OPTIONS;
+const FINISH_OPTIONS: readonly NumberedOption[] = PLAAGG_FINISH_OPTIONS;
 
 @Injectable()
 export class TechfindIntakeFlowService {
@@ -39,6 +51,7 @@ export class TechfindIntakeFlowService {
     private readonly stateMachine: ConversationStateMachineService,
     private readonly leadProfiles: LeadProfileService,
     private readonly scoring: LeadScoringService,
+    private readonly demos: DemoSimulationService,
     private readonly config: ConfigService,
   ) {}
 
@@ -56,6 +69,7 @@ export class TechfindIntakeFlowService {
         );
         conversation.currentState = resumed.currentState;
       }
+      await this.demos.closeOpen(conversation.id);
       await this.sessions.closeOpen(conversation.id);
       return this.start(conversation, { forceNew: true });
     }
@@ -118,6 +132,14 @@ export class TechfindIntakeFlowService {
         return this.captureBusiness(session, text);
       case TECHFIND_INTAKE_STEPS.AWAITING_QUALIFICATION:
         return this.captureQualification(conversation, session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_INDUSTRY:
+        return this.capturePlaaggIndustry(conversation, session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_OTHER:
+        return this.capturePlaaggOther(conversation, session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_DEMO:
+        return this.continuePlaaggDemo(conversation, session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_FINISH:
+        return this.capturePlaaggFinish(conversation, session, text);
       default:
         return { replyText: copy.TECHFIND_INTAKE_GREETING };
     }
@@ -133,7 +155,10 @@ export class TechfindIntakeFlowService {
     }
     await this.sessions.save(session, {
       step: TECHFIND_INTAKE_STEPS.AWAITING_NAME,
-      payload: { ...session.payload, serviceId: matched.id as TechfindMenuOptionId },
+      payload: {
+        ...session.payload,
+        serviceId: matched.id as TechfindMenuOptionId,
+      },
     });
     return { replyText: copy.ASK_NAME };
   }
@@ -185,23 +210,282 @@ export class TechfindIntakeFlowService {
       qualificationDetails: details,
     };
     await this.persistLead(conversation, payload);
-    await this.sessions.markComplete(session);
 
     const serviceId = payload.serviceId ?? 'website';
-    const followUp = this.followUpForService(serviceId);
+
+    if (serviceId === 'plaagg') {
+      await this.advanceLeadScored(conversation);
+      await this.sessions.save(session, {
+        step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_INDUSTRY,
+        payload,
+      });
+      return {
+        replyText: `${copy.LEAD_SAVED}\n\n${plaaggCopy.PLAAGG_INDUSTRY_MENU}`,
+      };
+    }
+
+    await this.sessions.markComplete(session);
 
     if (serviceId === 'speak_to_team') {
       await this.stateMachine.enterHumanHandoff(conversation.id);
     }
 
-    let current = conversation;
-    if (current.currentState === ConversationState.TECHFIND_GREETING) {
-      current = await this.stateMachine.transition(
+    await this.advanceLeadPipeline(conversation);
+
+    return { replyText: this.followUpForService(serviceId) };
+  }
+
+  private async capturePlaaggIndustry(
+    conversation: Conversation,
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    const matched = matchNumberedOption(text, PLAAGG_OPTIONS);
+    if (!matched) {
+      return { replyText: plaaggCopy.REASK_PLAAGG_INDUSTRY };
+    }
+    const industryId = matched.id as PlaaggIndustryId;
+    const payload: TechfindIntakePayload = {
+      ...session.payload,
+      plaaggIndustryId: industryId,
+      plaaggIndustryLabel: plaaggIndustryLabel(industryId),
+    };
+    if (industryId === 'other') {
+      await this.sessions.save(session, {
+        step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_OTHER,
+        payload,
+      });
+      return { replyText: plaaggCopy.ASK_OTHER_INDUSTRY };
+    }
+    return this.startPlaaggDemo(conversation, session, payload);
+  }
+
+  private async capturePlaaggOther(
+    conversation: Conversation,
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    const label = text.trim();
+    if (label.length < 2) {
+      return { replyText: plaaggCopy.REASK_OTHER_INDUSTRY };
+    }
+    const payload: TechfindIntakePayload = {
+      ...session.payload,
+      plaaggOtherLabel: label,
+      plaaggIndustryLabel: label,
+    };
+    return this.startPlaaggDemo(conversation, session, payload);
+  }
+
+  private async startPlaaggDemo(
+    conversation: Conversation,
+    session: TechfindIntakeSession,
+    payload: TechfindIntakePayload,
+  ): Promise<TechfindIntakeReply> {
+    const industryId = payload.plaaggIndustryId ?? 'other';
+    const demoMode = plaaggIndustryToDemoMode(
+      industryId,
+      payload.plaaggOtherLabel,
+    );
+
+    await this.demos.closeOpen(conversation.id);
+    await this.walkToDemoRunning(conversation, demoMode);
+
+    const { result } = await this.demos.start(conversation.id, demoMode, {
+      initialPayload: { plaaggExplore: true },
+    });
+
+    await this.sessions.save(session, {
+      step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_DEMO,
+      payload: {
+        ...payload,
+        plaaggDemoMode: demoMode,
+      },
+    });
+
+    return { replyText: result.replyText };
+  }
+
+  private async continuePlaaggDemo(
+    conversation: Conversation,
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    let simulation = await this.demos.findActive(conversation.id);
+    if (!simulation && session.payload.plaaggDemoMode) {
+      const started = await this.demos.start(
+        conversation.id,
+        session.payload.plaaggDemoMode,
+        { initialPayload: { plaaggExplore: true } },
+      );
+      simulation = started.simulation;
+      if (session.currentStep !== TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_DEMO) {
+        return { replyText: started.result.replyText };
+      }
+    }
+    if (!simulation) {
+      return { replyText: plaaggCopy.REASK_PLAAGG_INDUSTRY };
+    }
+
+    const { result } = await this.demos.handleInput(simulation, text, {
+      tenantId: conversation.tenantId,
+    });
+
+    if (!result.isComplete) {
+      return { replyText: result.replyText };
+    }
+
+    await this.advanceToValueReveal(conversation);
+
+    const summaryLine =
+      result.replyText.split('\n').find((line) => line.trim().length > 0) ??
+      'Simulated customer journey completed';
+
+    const industryId = session.payload.plaaggIndustryId ?? 'generic';
+    const industryLabel =
+      session.payload.plaaggIndustryLabel ??
+      plaaggIndustryLabel(industryId, session.payload.plaaggOtherLabel);
+
+    const insight = buildPlaaggInsightContext({
+      industryId,
+      industryLabel,
+      contactName: session.payload.contactName ?? 'Prospect',
+      businessName: session.payload.businessName ?? 'Business',
+      demoSummaryLine: summaryLine.slice(0, 120),
+    });
+
+    await this.sessions.save(session, {
+      step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_FINISH,
+      payload: {
+        ...session.payload,
+        plaaggLastDemoSummary: summaryLine,
+      },
+    });
+
+    const replyText = [
+      result.replyText,
+      plaaggCopy.plaaggBusinessReceives(insight),
+      plaaggCopy.PLAAGG_FINISH_MENU,
+    ].join('\n\n');
+
+    return { replyText };
+  }
+
+  private async capturePlaaggFinish(
+    conversation: Conversation,
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    const matched = matchNumberedOption(text, FINISH_OPTIONS);
+    if (!matched) {
+      return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+    }
+
+    const industryId = session.payload.plaaggIndustryId ?? 'generic';
+    const industryLabel =
+      session.payload.plaaggIndustryLabel ??
+      plaaggIndustryLabel(industryId, session.payload.plaaggOtherLabel);
+
+    switch (matched.id) {
+      case 'book_demo':
+        await this.stateMachine.transition(
+          conversation.id,
+          ConversationState.MEETING_BOOKED,
+        );
+        await this.sessions.markComplete(session);
+        return { replyText: plaaggCopy.PLAAGG_BOOK_DEMO_REPLY };
+      case 'speak_to_techfind':
+        await this.stateMachine.enterHumanHandoff(conversation.id);
+        await this.sessions.markComplete(session);
+        return { replyText: copy.HUMAN_HANDOVER_ACK };
+      case 'try_another':
+        await this.demos.closeOpen(conversation.id);
+        await this.sessions.save(session, {
+          step: TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_INDUSTRY,
+          payload: {
+            ...session.payload,
+            plaaggDemoMode: undefined,
+            plaaggLastDemoSummary: undefined,
+          },
+        });
+        return { replyText: plaaggCopy.PLAAGG_TRY_ANOTHER };
+      case 'recommended_plan':
+        return {
+          replyText: plaaggCopy.plaaggRecommendedPlanReply(
+            industryId,
+            industryLabel,
+          ),
+        };
+      default:
+        return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+    }
+  }
+
+  private async walkToDemoRunning(
+    conversation: Conversation,
+    demoMode: string,
+  ): Promise<void> {
+    const from = conversation.currentState;
+    if (
+      from === ConversationState.TECHFIND_GREETING ||
+      from === ConversationState.MEETING_OFFERED ||
+      from === ConversationState.VALUE_REVEAL ||
+      from === ConversationState.LEAD_SCORED
+    ) {
+      await this.stateMachine.transition(
+        conversation.id,
+        ConversationState.DEMO_SELECTED,
+        { demoMode },
+      );
+    }
+    await this.stateMachine.transition(conversation.id, ConversationState.DEMO_RUNNING, {
+      demoMode,
+    });
+  }
+
+  private async advanceToValueReveal(conversation: Conversation): Promise<void> {
+    const current = conversation.currentState;
+    if (current === ConversationState.DEMO_RUNNING) {
+      await this.stateMachine.transition(
+        conversation.id,
+        ConversationState.DEMO_TRANSACTION,
+      );
+    }
+    await this.stateMachine.transition(
+      conversation.id,
+      ConversationState.VALUE_REVEAL,
+    );
+    await this.stateMachine.transition(
+      conversation.id,
+      ConversationState.MEETING_OFFERED,
+    );
+  }
+
+  private async advanceLeadScored(conversation: Conversation): Promise<void> {
+    if (conversation.currentState === ConversationState.TECHFIND_GREETING) {
+      await this.stateMachine.transition(
         conversation.id,
         ConversationState.BUSINESS_QUALIFICATION,
       );
     }
-    if (current.currentState === ConversationState.BUSINESS_QUALIFICATION) {
+    await this.stateMachine.transition(
+      conversation.id,
+      ConversationState.LEAD_SCORED,
+    );
+    await this.stateMachine.transition(
+      conversation.id,
+      ConversationState.MEETING_OFFERED,
+    );
+  }
+
+  private async advanceLeadPipeline(conversation: Conversation): Promise<void> {
+    if (conversation.currentState === ConversationState.TECHFIND_GREETING) {
+      await this.stateMachine.transition(
+        conversation.id,
+        ConversationState.BUSINESS_QUALIFICATION,
+      );
+    }
+    if (conversation.currentState === ConversationState.BUSINESS_QUALIFICATION) {
       await this.stateMachine.transition(
         conversation.id,
         ConversationState.LEAD_SCORED,
@@ -211,8 +495,6 @@ export class TechfindIntakeFlowService {
         ConversationState.MEETING_OFFERED,
       );
     }
-
-    return { replyText: followUp };
   }
 
   private async persistLead(
@@ -244,6 +526,9 @@ export class TechfindIntakeFlowService {
       payload.qualificationDetails
         ? `Details: ${payload.qualificationDetails}`
         : null,
+      payload.plaaggIndustryLabel
+        ? `PLAAGG industry: ${payload.plaaggIndustryLabel}`
+        : null,
     ].filter(Boolean);
     return lines.join('\n');
   }
@@ -256,8 +541,6 @@ export class TechfindIntakeFlowService {
         return copy.CRM_FOLLOW_UP;
       case 'whatsapp_automation':
         return copy.WHATSAPP_AUTOMATION_FOLLOW_UP;
-      case 'plaagg':
-        return copy.PLAAGG_PHASE2_HOLD;
       case 'ai_training':
         return copy.AI_TRAINING_FOLLOW_UP;
       case 'existing_client':
@@ -275,6 +558,7 @@ export class TechfindIntakeFlowService {
   }
 
   private async handover(conversation: Conversation): Promise<TechfindIntakeReply> {
+    await this.demos.closeOpen(conversation.id);
     await this.sessions.closeOpen(conversation.id);
     await this.stateMachine.enterHumanHandoff(conversation.id);
     return { replyText: copy.HUMAN_HANDOVER_ACK };

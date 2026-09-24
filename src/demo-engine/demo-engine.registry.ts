@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DemoEngine } from './demo-engine.types';
+import { ScriptDemoEngine } from './script/script-demo.engine';
+import { SCRIPT_DEMO_DEFINITIONS } from './script/script-demo.definitions';
 import { SalonDemoEngine } from './salon/salon-demo.engine';
 import { SolarDemoEngine } from './solar/solar-demo.engine';
 import { UnknownDemoModeError } from './unknown-demo-mode.error';
@@ -11,6 +13,9 @@ export class DemoEngineRegistry {
   constructor(salon: SalonDemoEngine, solar: SolarDemoEngine) {
     this.engines.set(salon.mode, salon);
     this.engines.set(solar.mode, solar);
+    for (const definition of SCRIPT_DEMO_DEFINITIONS) {
+      this.engines.set(definition.mode, new ScriptDemoEngine(definition));
+    }
   }
 
   get(demoMode: string): DemoEngine {
