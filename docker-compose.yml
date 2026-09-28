@@ -76,6 +76,8 @@ services:
       MAILGUN_URL: ${MAILGUN_URL:-}
       DIVINE_BUDGET_BASE_URL: ${DIVINE_BUDGET_BASE_URL:-}
       DIVINE_BUDGET_API_KEY: ${DIVINE_BUDGET_API_KEY:-}
+      INSIGHTFUL_POS_BASE_URL: ${INSIGHTFUL_POS_BASE_URL:-}
+      INSIGHTFUL_POS_API_KEY: ${INSIGHTFUL_POS_API_KEY:-}
     volumes:
       # Bind-mounted Baileys sessions; entrypoint chowns to uid 1001 (nestjs) so pairing can mkdir tenant dirs.
       - ${BAILEYS_AUTH_HOST_PATH:-./baileys-auth}:/app/baileys-auth
