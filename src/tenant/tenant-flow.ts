@@ -1,4 +1,8 @@
-export const TENANT_FLOWS = ['techfind_demo', 'enquiry_intake'] as const;
+export const TENANT_FLOWS = [
+  'techfind_demo',
+  'enquiry_intake',
+  'pos_ops',
+] as const;
 export type TenantFlow = (typeof TENANT_FLOWS)[number];
 
 export const DEFAULT_TENANT_FLOW: TenantFlow = 'techfind_demo';

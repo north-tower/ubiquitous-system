@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
 import {
   BaileysWhatsappClient,
   type BaileysInboundNotice,
@@ -31,6 +32,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     private readonly conversations: ConversationService,
     private readonly techfindIntake: TechfindIntakeFlowService,
     private readonly enquiryFlow: EnquiryFlowService,
+    private readonly posOpsFlow: PosOpsFlowService,
     private readonly outbound: OutboundMessageService,
     private readonly baileys: BaileysWhatsappClient,
     private readonly stateMachine: ConversationStateMachineService,
@@ -173,6 +175,13 @@ export class WhatsappWebhookService implements OnModuleInit {
       );
       replyText = reply.replyText;
       list = reply.list;
+      silent = Boolean(reply.silent);
+    } else if (input.flow === 'pos_ops') {
+      const reply = await this.posOpsFlow.handleInbound(
+        conversation,
+        input.text,
+      );
+      replyText = reply.replyText;
       silent = Boolean(reply.silent);
     } else {
       const reply = await this.techfindIntake.handleInbound(

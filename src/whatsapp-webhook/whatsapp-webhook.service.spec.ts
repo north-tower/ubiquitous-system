@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
@@ -23,6 +24,9 @@ describe('WhatsappWebhookService', () => {
     handleInbound: jest.fn(),
   };
   const enquiryFlow = {
+    handleInbound: jest.fn(),
+  };
+  const posOpsFlow = {
     handleInbound: jest.fn(),
   };
   const outbound = {
@@ -49,6 +53,7 @@ describe('WhatsappWebhookService', () => {
       conversations as unknown as ConversationService,
       techfindIntake as unknown as TechfindIntakeFlowService,
       enquiryFlow as unknown as EnquiryFlowService,
+      posOpsFlow as unknown as PosOpsFlowService,
       outbound as unknown as OutboundMessageService,
       baileys as unknown as BaileysWhatsappClient,
       stateMachine as never,
@@ -62,6 +67,7 @@ describe('WhatsappWebhookService', () => {
     conversations.recordInbound.mockReset();
     techfindIntake.handleInbound.mockReset();
     enquiryFlow.handleInbound.mockReset();
+    posOpsFlow.handleInbound.mockReset();
     outbound.sendAll.mockReset();
     baileys.setInboundHandler.mockReset();
     stateMachine.resumeAutomation.mockReset();
@@ -75,6 +81,9 @@ describe('WhatsappWebhookService', () => {
     });
     enquiryFlow.handleInbound.mockResolvedValue({
       replyText: 'what are you planning?',
+    });
+    posOpsFlow.handleInbound.mockResolvedValue({
+      replyText: 'Insightful POS menu',
     });
     outbound.sendAll.mockResolvedValue(undefined);
   });
@@ -273,6 +282,40 @@ describe('WhatsappWebhookService', () => {
     expect(outbound.sendAll).toHaveBeenCalledWith([
       expect.objectContaining({
         text: 'what are you planning?',
+        channel: 'twilio',
+      }),
+    ]);
+  });
+
+  it('routes a pos_ops tenant to the POS flow', async () => {
+    const conversation = {
+      id: 'conv-pos',
+      prospectPhone: '254798229340',
+      currentState: ConversationState.NEW,
+    };
+    tenantResolver.resolveDefault.mockResolvedValue({
+      id: 'tenant-pos',
+      flow: 'pos_ops',
+    });
+    conversations.recordInbound.mockResolvedValue({
+      conversation,
+      message: { id: 'msg-1' },
+    });
+
+    await createService().handleTwilioInbound({
+      SmsStatus: 'received',
+      Body: 'hi',
+      From: 'whatsapp:+254798229340',
+      WaId: '254798229340',
+      MessageSid: 'SM456',
+    });
+
+    expect(posOpsFlow.handleInbound).toHaveBeenCalledWith(conversation, 'hi');
+    expect(enquiryFlow.handleInbound).not.toHaveBeenCalled();
+    expect(techfindIntake.handleInbound).not.toHaveBeenCalled();
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      expect.objectContaining({
+        text: 'Insightful POS menu',
         channel: 'twilio',
       }),
     ]);
