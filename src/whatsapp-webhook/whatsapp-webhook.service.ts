@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import { InsightfulPosError } from '../insightful-pos/insightful-pos.types';
 import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
 import {
   BaileysWhatsappClient,
@@ -100,11 +101,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         channel: 'baileys',
       });
     } catch (error) {
-      this.logger.error(
-        `Baileys inbound processing failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logInboundProcessingFailed('Baileys', error);
     }
   }
 
@@ -131,12 +128,22 @@ export class WhatsappWebhookService implements OnModuleInit {
         channel: 'twilio',
       });
     } catch (error) {
-      this.logger.error(
-        `Twilio inbound processing failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logInboundProcessingFailed('Twilio', error);
     }
+  }
+
+  private logInboundProcessingFailed(channel: string, error: unknown): void {
+    if (error instanceof InsightfulPosError) {
+      this.logger.error(
+        `${channel} inbound processing failed: ${error.describeForLog()}`,
+      );
+      return;
+    }
+    this.logger.error(
+      `${channel} inbound processing failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 
   private async processInbound(input: {

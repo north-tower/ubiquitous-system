@@ -11,7 +11,70 @@ import {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
+const POS_AUTH_USER_MESSAGE =
+  'Shop ops cannot reach the store backend (server authentication failed). Ask your admin to verify INSIGHTFUL_POS_API_KEY matches Supabase WHATSAPP_OPS_API_KEY.';
+
 type ApiResponse = Record<string, unknown>;
+
+function summarizePayload(payload: ApiResponse): string {
+  try {
+    const text = JSON.stringify(payload);
+    return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+  } catch {
+    return '(unserializable body)';
+  }
+}
+
+function endpointHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return '(invalid INSIGHTFUL_POS_BASE_URL)';
+  }
+}
+
+function failureFromResponse(
+  payload: ApiResponse,
+  status: number,
+  action: string,
+): { userMessage: string; logDetail: string; retryable: boolean } {
+  const apiError =
+    typeof payload.error === 'string' ? payload.error.trim() : null;
+  const platformMessage =
+    typeof payload.message === 'string' ? payload.message.trim() : null;
+
+  if (status === 401) {
+    if (platformMessage?.toLowerCase().includes('jwt')) {
+      return {
+        userMessage: POS_AUTH_USER_MESSAGE,
+        logDetail:
+          'Supabase gateway rejected Bearer token (JWT verification). Deploy whatsapp-ops with --no-verify-jwt.',
+        retryable: false,
+      };
+    }
+    if (apiError === 'Unauthorized') {
+      return {
+        userMessage: POS_AUTH_USER_MESSAGE,
+        logDetail:
+          'whatsapp-ops returned Unauthorized: WHATSAPP_OPS_API_KEY on Supabase must match INSIGHTFUL_POS_API_KEY on whatsapp3 (redeploy the function after updating secrets).',
+        retryable: false,
+      };
+    }
+    return {
+      userMessage: POS_AUTH_USER_MESSAGE,
+      logDetail: `HTTP 401 from whatsapp-ops; body=${summarizePayload(payload)}`,
+      retryable: false,
+    };
+  }
+
+  const userMessage =
+    apiError ?? platformMessage ?? `Insightful POS error (${status})`;
+  return {
+    userMessage,
+    logDetail: `body=${summarizePayload(payload)}`,
+    retryable: status >= 500,
+  };
+}
 
 @Injectable()
 export class InsightfulPosClient {
@@ -133,17 +196,23 @@ export class InsightfulPosClient {
   }
 
   private async post(body: Record<string, unknown>): Promise<ApiResponse> {
+    const action =
+      typeof body.action === 'string' ? body.action : 'unknown';
+    const baseUrl = this.baseUrl()!;
+
     if (!this.isConfigured()) {
       throw new InsightfulPosError(
         'Insightful POS API is not configured',
         null,
         false,
+        action,
+        'Set INSIGHTFUL_POS_BASE_URL and INSIGHTFUL_POS_API_KEY on the bot server.',
       );
     }
 
     let response: Response;
     try {
-      response = await fetch(this.baseUrl()!, {
+      response = await fetch(baseUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.apiKey()}`,
@@ -158,7 +227,13 @@ export class InsightfulPosClient {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      throw new InsightfulPosError('Could not reach Insightful POS', null, true);
+      throw new InsightfulPosError(
+        'Could not reach Insightful POS',
+        null,
+        true,
+        action,
+        `host=${endpointHost(baseUrl)}; network or DNS failure`,
+      );
     }
 
     let payload: ApiResponse;
@@ -169,18 +244,23 @@ export class InsightfulPosClient {
         'Invalid response from Insightful POS',
         response.status,
         response.status >= 500,
+        action,
+        `host=${endpointHost(baseUrl)}; response was not JSON`,
       );
     }
 
     if (!response.ok) {
-      const message =
-        typeof payload.error === 'string'
-          ? payload.error
-          : `Insightful POS error (${response.status})`;
+      const failure = failureFromResponse(payload, response.status, action);
+      const key = this.apiKey();
+      this.logger.error(
+        `Insightful POS ${action} failed: status=${response.status}; host=${endpointHost(baseUrl)}; apiKeyConfigured=${Boolean(key)}; apiKeyLength=${key?.length ?? 0}; ${failure.logDetail}`,
+      );
       throw new InsightfulPosError(
-        message,
+        failure.userMessage,
         response.status,
-        response.status >= 500,
+        failure.retryable,
+        action,
+        failure.logDetail,
       );
     }
 

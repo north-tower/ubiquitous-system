@@ -104,15 +104,15 @@ export class PosOpsFlowService {
       };
     }
 
-    let session = await this.sessions.findActive(conversation.id);
-    if (!session) {
-      return this.openMenu(conversation);
-    }
-
     try {
+      let session = await this.sessions.findActive(conversation.id);
+      if (!session) {
+        return await this.openMenu(conversation);
+      }
       return await this.routeStep(session, conversation, phone, text);
     } catch (error) {
       if (error instanceof InsightfulPosError) {
+        this.logger.error(`POS API error: ${error.describeForLog()}`);
         return { replyText: error.message };
       }
       this.logger.error(

@@ -45,8 +45,25 @@ export class InsightfulPosError extends Error {
     message: string,
     readonly statusCode: number | null,
     readonly retryable: boolean,
+    readonly action?: string,
+    readonly logDetail?: string,
   ) {
     super(message);
     this.name = 'InsightfulPosError';
+  }
+
+  /** Safe for server logs — never includes API keys or response secrets. */
+  describeForLog(): string {
+    const parts = [this.message];
+    if (this.action) {
+      parts.push(`action=${this.action}`);
+    }
+    if (this.statusCode != null) {
+      parts.push(`status=${this.statusCode}`);
+    }
+    if (this.logDetail) {
+      parts.push(this.logDetail);
+    }
+    return parts.join('; ');
   }
 }
