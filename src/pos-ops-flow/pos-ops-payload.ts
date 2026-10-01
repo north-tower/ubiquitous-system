@@ -31,6 +31,10 @@ export type PosOpsPayload = {
   amount?: number;
   payMethod?: 'cash' | 'mpesa';
   flowKind?: 'sale' | 'credit' | 'pay';
+  // Quick-sale fast path
+  quickUnitPrice?: number;
+  quickQuantity?: number;
+  quickCustomerQuery?: string;
 };
 
 export function cartTotal(cart: PosCartLine[] | undefined): number {

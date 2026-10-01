@@ -20,6 +20,7 @@ import {
   type PosListedProduct,
   type PosOpsPayload,
 } from './pos-ops-payload';
+import { parseQuickSale } from './parse-quick-sale';
 import { PosOpsSession } from './pos-ops-session.entity';
 import { PosOpsSessionService } from './pos-ops-session.service';
 import { POS_OPS_STEPS } from './pos-ops-steps';
@@ -106,6 +107,15 @@ export class PosOpsFlowService {
 
     try {
       let session = await this.sessions.findActive(conversation.id);
+
+      // Fast path: if the user sends a quick-sale line (e.g. "bread 50" or
+      // "3 sugar 120 credit john") handle it whether or not a session is open.
+      // We only intercept at MENU step (or when there's no active session).
+      const quick = parseQuickSale(text);
+      if (quick && (!session || session.currentStep === POS_OPS_STEPS.MENU)) {
+        return await this.handleQuickSale(conversation, phone, quick, session);
+      }
+
       if (!session) {
         return await this.openMenu(conversation);
       }
@@ -190,6 +200,12 @@ export class PosOpsFlowService {
         return this.handlePayMethod(session, text);
       case POS_OPS_STEPS.PAY_CONFIRM:
         return this.handlePayConfirm(session, phone, text);
+      case POS_OPS_STEPS.QUICK_PRODUCT_PICK:
+        return this.handleQuickProductPick(session, phone, text);
+      case POS_OPS_STEPS.QUICK_CUSTOMER_PICK:
+        return this.handleQuickCustomerPick(session, phone, text);
+      case POS_OPS_STEPS.QUICK_CONFIRM:
+        return this.handleQuickConfirm(session, phone, text);
       default:
         return this.openMenu(conversation);
     }
@@ -658,6 +674,318 @@ export class PosOpsFlowService {
       replyText:
         `Payment recorded.\nApplied: KES ${result.applied_amount}\n` +
         `New balance: KES ${result.balance_after}\n\nType *reset* for the menu.`,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quick-sale fast path
+  // ---------------------------------------------------------------------------
+
+  private async handleQuickSale(
+    conversation: Conversation,
+    phone: string,
+    quick: ReturnType<typeof parseQuickSale> & {},
+    existingSession: PosOpsSession | null,
+  ): Promise<PosOpsReply> {
+    // Close any stale open session so we start clean
+    if (existingSession) {
+      await this.sessions.closeOpen(conversation.id);
+    }
+
+    // Ensure staff identity (re-open menu implicitly validates auth)
+    const identity = await this.pos.identify(phone);
+    if (!identity) {
+      return { replyText: copy.UNAUTHORISED };
+    }
+
+    // Search products
+    const hits = await this.pos.searchProducts(phone, quick.productQuery);
+    if (!hits.length) {
+      return {
+        replyText: `No products found for "${quick.productQuery}". Type a menu number or try again.`,
+      };
+    }
+
+    const basePayload: PosOpsPayload = {
+      staffName: identity.staffName,
+      storeName: identity.storeName,
+      cart: [],
+      saleType: quick.saleType,
+      flowKind: 'sale',
+      quickUnitPrice: quick.unitPrice,
+      quickQuantity: quick.quantity,
+      quickCustomerQuery: quick.customerQuery ?? undefined,
+    };
+
+    if (hits.length === 1) {
+      // Exact single hit — skip pick step
+      return this.quickAfterProduct(conversation, phone, basePayload, {
+        id: hits[0].id,
+        name: hits[0].name,
+        price: quick.unitPrice, // use staff-specified price
+      });
+    }
+
+    // Multiple hits — show pick list, preserve quick-sale context
+    const pendingProducts: PosListedProduct[] = hits.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+    }));
+
+    const session = await this.sessions.start(
+      conversation.id,
+      POS_OPS_STEPS.QUICK_PRODUCT_PICK,
+      { ...basePayload, pendingProducts },
+    );
+    void session;
+
+    const lines = pendingProducts.map(
+      (p, i) => `${i + 1}  ${p.name} — KES ${p.price}`,
+    );
+    return {
+      replyText: `Multiple products found. Pick one:\n${lines.join('\n')}`,
+    };
+  }
+
+  private async quickAfterProduct(
+    conversation: Conversation,
+    phone: string,
+    payload: PosOpsPayload,
+    product: PosListedProduct,
+  ): Promise<PosOpsReply> {
+    const qty = payload.quickQuantity ?? 1;
+    const unitPrice = payload.quickUnitPrice ?? product.price;
+
+    const cart: PosCartLine[] = [
+      {
+        productId: product.id,
+        productName: product.name,
+        unitPrice,
+        quantity: qty,
+      },
+    ];
+
+    const updatedPayload: PosOpsPayload = {
+      ...payload,
+      cart,
+      pendingProducts: undefined,
+    };
+
+    if (payload.saleType === 'credit' && payload.quickCustomerQuery) {
+      const customerHits = await this.pos.searchCustomers(
+        phone,
+        payload.quickCustomerQuery,
+      );
+
+      if (!customerHits.length) {
+        return {
+          replyText: `No customers found for "${payload.quickCustomerQuery}". Type a menu number or try again.`,
+        };
+      }
+
+      if (customerHits.length === 1) {
+        const customer: PosListedCustomer = {
+          id: customerHits[0].id,
+          label:
+            `${customerHits[0].first_name} ${customerHits[0].last_name}`.trim(),
+          creditBalance: Number(customerHits[0].credit_balance),
+          creditLimit: Number(customerHits[0].credit_limit),
+        };
+        const finalPayload: PosOpsPayload = {
+          ...updatedPayload,
+          customerId: customer.id,
+          customerLabel: customer.label,
+          idempotencyKey: randomUUID(),
+        };
+        await this.sessions.start(
+          conversation.id,
+          POS_OPS_STEPS.QUICK_CONFIRM,
+          finalPayload,
+        );
+        return {
+          replyText: copy.quickConfirmText(
+            product.name,
+            unitPrice,
+            qty,
+            'credit',
+            customer.label,
+          ),
+        };
+      }
+
+      // Multiple customers
+      const pendingCustomers: PosListedCustomer[] = customerHits.map((c) => ({
+        id: c.id,
+        label: `${c.first_name} ${c.last_name}`.trim(),
+        creditBalance: Number(c.credit_balance),
+        creditLimit: Number(c.credit_limit),
+      }));
+
+      await this.sessions.start(conversation.id, POS_OPS_STEPS.QUICK_CUSTOMER_PICK, {
+        ...updatedPayload,
+        pendingCustomers,
+      });
+
+      const lines = pendingCustomers.map(
+        (c, i) => `${i + 1}  ${c.label} — balance KES ${c.creditBalance}`,
+      );
+      return {
+        replyText: `Multiple customers found. Pick one:\n${lines.join('\n')}`,
+      };
+    }
+
+    // Cash sale — go straight to confirm
+    const finalPayload: PosOpsPayload = {
+      ...updatedPayload,
+      idempotencyKey: randomUUID(),
+    };
+    await this.sessions.start(
+      conversation.id,
+      POS_OPS_STEPS.QUICK_CONFIRM,
+      finalPayload,
+    );
+    return {
+      replyText: copy.quickConfirmText(product.name, unitPrice, qty, 'cash'),
+    };
+  }
+
+  private async handleQuickProductPick(
+    session: PosOpsSession,
+    phone: string,
+    text: string,
+  ): Promise<PosOpsReply> {
+    const options = (session.payload.pendingProducts ?? []).map((p) => ({
+      id: p.id,
+      label: p.name,
+      aliases: [p.name.toLowerCase()],
+    }));
+    const picked = matchNumberedOption(text, options);
+    if (!picked) {
+      return { replyText: 'Reply with the number of the product you want.' };
+    }
+
+    const product = session.payload.pendingProducts?.find(
+      (p) => p.id === picked.id,
+    );
+    if (!product) {
+      return { replyText: 'Session expired. Type *reset*.' };
+    }
+
+    await this.sessions.closeOpen(session.conversationId);
+
+    const identity = await this.pos.identify(phone);
+    return this.quickAfterProduct(
+      { id: session.conversationId } as Conversation,
+      phone,
+      {
+        ...session.payload,
+        staffName: identity?.staffName ?? session.payload.staffName,
+        storeName: identity?.storeName ?? session.payload.storeName,
+      },
+      {
+        id: product.id,
+        name: product.name,
+        price: session.payload.quickUnitPrice ?? product.price,
+      },
+    );
+  }
+
+  private async handleQuickCustomerPick(
+    session: PosOpsSession,
+    phone: string,
+    text: string,
+  ): Promise<PosOpsReply> {
+    const customer = this.pickCustomer(session, text);
+    if (!customer) {
+      return { replyText: 'Reply with the customer number from the list.' };
+    }
+
+    const cart = session.payload.cart ?? [];
+    const firstItem = cart[0];
+    const unitPrice = firstItem?.unitPrice ?? session.payload.quickUnitPrice ?? 0;
+    const qty = firstItem?.quantity ?? session.payload.quickQuantity ?? 1;
+
+    const finalPayload: PosOpsPayload = {
+      ...session.payload,
+      customerId: customer.id,
+      customerLabel: customer.label,
+      pendingCustomers: undefined,
+      idempotencyKey: randomUUID(),
+    };
+    await this.sessions.save(session, {
+      step: POS_OPS_STEPS.QUICK_CONFIRM,
+      payload: finalPayload,
+    });
+
+    return {
+      replyText: copy.quickConfirmText(
+        firstItem?.productName ?? 'item',
+        unitPrice,
+        qty,
+        'credit',
+        customer.label,
+      ),
+    };
+  }
+
+  private async handleQuickConfirm(
+    session: PosOpsSession,
+    phone: string,
+    text: string,
+  ): Promise<PosOpsReply> {
+    const choice = matchNumberedOption(text, CONFIRM);
+    if (!choice) {
+      const cart = session.payload.cart ?? [];
+      const first = cart[0];
+      return {
+        replyText: copy.quickConfirmText(
+          first?.productName ?? 'item',
+          first?.unitPrice ?? 0,
+          first?.quantity ?? 1,
+          session.payload.saleType ?? 'cash',
+          session.payload.customerLabel,
+        ),
+      };
+    }
+
+    if (choice.id === 'no') {
+      await this.sessions.closeOpen(session.conversationId);
+      return {
+        replyText: 'Sale cancelled. Type anything to open the menu again.',
+      };
+    }
+
+    const cart = session.payload.cart ?? [];
+    const total = cartTotal(cart);
+    const saleType = session.payload.saleType ?? 'cash';
+    const key = session.payload.idempotencyKey ?? randomUUID();
+
+    const payments =
+      saleType === 'cash'
+        ? [{ method: 'cash', amount: total }]
+        : [{ method: 'credit', amount: 0 }];
+
+    const sale = await this.pos.createSale({
+      phone,
+      idempotencyKey: key,
+      saleType,
+      customerId: session.payload.customerId,
+      items: cart.map((l) => ({
+        product_id: l.productId,
+        product_name: l.productName,
+        unit_price: l.unitPrice,
+        quantity: l.quantity,
+      })),
+      payments,
+      notes: 'WhatsApp POS (quick)',
+    });
+
+    await this.sessions.close(session, sale.invoice_number);
+
+    return {
+      replyText:
+        `✓ Sale recorded.\nInvoice: ${sale.invoice_number}\nOrder: ${sale.order_number}\nTotal: KES ${total}\n\nSend another quick sale or type *reset* for the menu.`,
     };
   }
 
