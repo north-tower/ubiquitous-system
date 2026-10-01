@@ -271,6 +271,8 @@ export class PosOpsFlowService {
       id: p.id,
       name: p.name,
       price: Number(p.price),
+      stock: p.stock,
+      sku: p.sku,
     }));
 
     await this.sessions.save(session, {
@@ -278,9 +280,11 @@ export class PosOpsFlowService {
       payload: { ...session.payload, pendingProducts },
     });
 
-    const lines = pendingProducts.map(
-      (p, i) => `${i + 1}  ${p.name} — KES ${p.price}`,
-    );
+    const lines = pendingProducts.map((p, i) => {
+      const stockHint = p.stock != null ? ` · ${p.stock} in stock` : '';
+      const skuHint = p.sku ? ` [${p.sku}]` : '';
+      return `${i + 1}  ${p.name}${skuHint} — KES ${p.price}${stockHint}`;
+    });
     return {
       replyText: `Pick a product:\n${lines.join('\n')}`,
     };
@@ -718,19 +722,23 @@ export class PosOpsFlowService {
     };
 
     if (hits.length === 1) {
-      // Exact single hit — skip pick step
+      // Exact single hit — use catalog price, not the typed approximation
       return this.quickAfterProduct(conversation, phone, basePayload, {
         id: hits[0].id,
         name: hits[0].name,
-        price: quick.unitPrice, // use staff-specified price
+        price: hits[0].price,
+        stock: hits[0].stock,
+        sku: hits[0].sku,
       });
     }
 
-    // Multiple hits — show pick list, preserve quick-sale context
+    // Multiple hits — show a rich pick list with catalog price + stock
     const pendingProducts: PosListedProduct[] = hits.map((p) => ({
       id: p.id,
       name: p.name,
       price: p.price,
+      stock: p.stock,
+      sku: p.sku,
     }));
 
     const session = await this.sessions.start(
@@ -740,11 +748,14 @@ export class PosOpsFlowService {
     );
     void session;
 
-    const lines = pendingProducts.map(
-      (p, i) => `${i + 1}  ${p.name} — KES ${p.price}`,
-    );
+    const lines = pendingProducts.map((p, i) => {
+      const stockHint =
+        p.stock != null ? ` · ${p.stock} in stock` : '';
+      const skuHint = p.sku ? ` [${p.sku}]` : '';
+      return `${i + 1}  ${p.name}${skuHint} — KES ${p.price}${stockHint}`;
+    });
     return {
-      replyText: `Multiple products found. Pick one:\n${lines.join('\n')}`,
+      replyText: `Found ${pendingProducts.length} products. Pick one:\n\n${lines.join('\n')}`,
     };
   }
 
@@ -755,7 +766,10 @@ export class PosOpsFlowService {
     product: PosListedProduct,
   ): Promise<PosOpsReply> {
     const qty = payload.quickQuantity ?? 1;
-    const unitPrice = payload.quickUnitPrice ?? product.price;
+    // Always use the catalog price from the POS system.
+    // The staff-typed price was just a parser hint to identify a quick sale,
+    // not a price override — variants like Bread 400g vs 600g each have their own price.
+    const unitPrice = product.price;
 
     const cart: PosCartLine[] = [
       {
@@ -886,7 +900,11 @@ export class PosOpsFlowService {
       {
         id: product.id,
         name: product.name,
-        price: session.payload.quickUnitPrice ?? product.price,
+        // Use the catalog price stored in pendingProducts — this is the correct
+        // variant price, not the approximate price the staff typed to trigger the parser
+        price: product.price,
+        stock: product.stock,
+        sku: product.sku,
       },
     );
   }

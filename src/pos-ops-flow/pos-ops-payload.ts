@@ -9,6 +9,8 @@ export type PosListedProduct = {
   id: string;
   name: string;
   price: number;
+  stock: number | null;
+  sku: string | null;
 };
 
 export type PosListedCustomer = {
