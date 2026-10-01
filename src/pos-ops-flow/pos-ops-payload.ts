@@ -25,6 +25,8 @@ export type PosOpsPayload = {
   storeName?: string;
   cart?: PosCartLine[];
   saleType?: 'cash' | 'credit';
+  /** The actual payment method for non-credit sales: cash | mpesa | card */
+  cashMethod?: 'cash' | 'mpesa' | 'card';
   customerId?: string;
   customerLabel?: string;
   pendingProducts?: PosListedProduct[];

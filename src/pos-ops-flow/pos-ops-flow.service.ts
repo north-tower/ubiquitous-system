@@ -51,12 +51,15 @@ const SALE_MORE: NumberedOption[] = [
 
 const PAYMENT_TYPE: NumberedOption[] = [
   { id: 'cash', label: 'Cash', aliases: ['cash'] },
+  { id: 'mpesa', label: 'M-Pesa', aliases: ['mpesa', 'm pesa', 'm-pesa'] },
+  { id: 'card', label: 'Direct Bank / Card', aliases: ['card', 'bank', 'direct bank'] },
   { id: 'credit', label: 'Credit (on account)', aliases: ['credit', 'account'] },
 ];
 
 const PAY_METHOD: NumberedOption[] = [
   { id: 'cash', label: 'Cash', aliases: ['cash'] },
-  { id: 'mpesa', label: 'M-Pesa', aliases: ['mpesa', 'm pesa'] },
+  { id: 'mpesa', label: 'M-Pesa', aliases: ['mpesa', 'm pesa', 'm-pesa'] },
+  { id: 'card', label: 'Direct Bank / Card', aliases: ['card', 'bank', 'direct bank'] },
 ];
 
 const CONFIRM: NumberedOption[] = [
@@ -204,6 +207,8 @@ export class PosOpsFlowService {
         return this.handleQuickProductPick(session, phone, text);
       case POS_OPS_STEPS.QUICK_CUSTOMER_PICK:
         return this.handleQuickCustomerPick(session, phone, text);
+      case POS_OPS_STEPS.QUICK_PAYMENT:
+        return this.handleQuickPayment(session, text);
       case POS_OPS_STEPS.QUICK_CONFIRM:
         return this.handleQuickConfirm(session, phone, text);
       default:
@@ -390,30 +395,36 @@ export class PosOpsFlowService {
       return { replyText: formatNumberedOptions(PAYMENT_TYPE) };
     }
 
-    if (choice.id === 'cash') {
-      const total = cartTotal(session.payload.cart);
+    if (choice.id === 'credit') {
+      // Credit sale — need a customer
       await this.sessions.save(session, {
-        step: POS_OPS_STEPS.SALE_CONFIRM,
-        payload: {
-          ...session.payload,
-          saleType: 'cash',
-          idempotencyKey: randomUUID(),
-        },
+        step: POS_OPS_STEPS.SALE_CREDIT_SEARCH,
+        payload: { ...session.payload, saleType: 'credit', cashMethod: undefined },
       });
-      return {
-        replyText: this.saleConfirmText(
-          session.payload.cart ?? [],
-          'cash',
-          total,
-        ),
-      };
+      return { replyText: 'Credit sale — type customer name or phone to search.' };
     }
 
+    // Cash / M-Pesa / Card — payment method is settled, go to confirm
+    const cashMethod = choice.id as 'cash' | 'mpesa' | 'card';
+    const total = cartTotal(session.payload.cart);
     await this.sessions.save(session, {
-      step: POS_OPS_STEPS.SALE_CREDIT_SEARCH,
-      payload: { ...session.payload, saleType: 'credit' },
+      step: POS_OPS_STEPS.SALE_CONFIRM,
+      payload: {
+        ...session.payload,
+        saleType: 'cash',
+        cashMethod,
+        idempotencyKey: randomUUID(),
+      },
     });
-    return { replyText: 'Credit sale — type customer name or phone to search.' };
+    return {
+      replyText: this.saleConfirmText(
+        session.payload.cart ?? [],
+        'cash',
+        total,
+        undefined,
+        cashMethod,
+      ),
+    };
   }
 
   private async handleCustomerSearch(
@@ -474,6 +485,7 @@ export class PosOpsFlowService {
         customerId: customer.id,
         customerLabel: customer.label,
         saleType: 'credit',
+        cashMethod: undefined,
         idempotencyKey: randomUUID(),
       },
     });
@@ -492,6 +504,7 @@ export class PosOpsFlowService {
     saleType: string,
     total: number,
     customerLabel?: string,
+    cashMethod?: string,
   ): string {
     const lines = cart.map(
       (l) => `• ${l.productName} x${l.quantity} @ ${l.unitPrice}`,
@@ -500,9 +513,17 @@ export class PosOpsFlowService {
       saleType === 'credit' && customerLabel
         ? `\nCustomer: ${customerLabel}`
         : '';
+    const methodLabel =
+      saleType === 'credit'
+        ? 'Credit (on account)'
+        : cashMethod === 'mpesa'
+          ? 'M-Pesa'
+          : cashMethod === 'card'
+            ? 'Direct Bank / Card'
+            : 'Cash';
     return (
       `Confirm this sale?\n${lines.join('\n')}\n` +
-      `Type: ${saleType}${cust}\nTotal: KES ${total}\n\n` +
+      `Payment: ${methodLabel}${cust}\nTotal: KES ${total}\n\n` +
       formatNumberedOptions(CONFIRM)
     );
   }
@@ -528,15 +549,17 @@ export class PosOpsFlowService {
     const saleType = session.payload.saleType ?? 'cash';
     const key = session.payload.idempotencyKey ?? randomUUID();
 
+    // Credit sales: payments array is empty — the invoice goes on the customer's account.
+    // Cash/M-Pesa/Card sales: single payment entry with the actual method.
     const payments =
-      saleType === 'cash'
-        ? [{ method: 'cash', amount: total }]
-        : [{ method: 'credit', amount: 0 }];
+      saleType === 'credit'
+        ? []
+        : [{ method: session.payload.cashMethod ?? 'cash', amount: total }];
 
     const sale = await this.pos.createSale({
       phone,
       idempotencyKey: key,
-      saleType: saleType as 'cash' | 'credit',
+      saleType,
       customerId: session.payload.customerId,
       items: cart.map((l) => ({
         product_id: l.productId,
@@ -824,6 +847,7 @@ export class PosOpsFlowService {
             qty,
             'credit',
             customer.label,
+            undefined,
           ),
         };
       }
@@ -849,18 +873,52 @@ export class PosOpsFlowService {
       };
     }
 
-    // Cash sale — go straight to confirm
-    const finalPayload: PosOpsPayload = {
-      ...updatedPayload,
-      idempotencyKey: randomUUID(),
-    };
+    // Cash / M-Pesa / Card sale — ask for payment method first
     await this.sessions.start(
       conversation.id,
-      POS_OPS_STEPS.QUICK_CONFIRM,
-      finalPayload,
+      POS_OPS_STEPS.QUICK_PAYMENT,
+      { ...updatedPayload, idempotencyKey: randomUUID() },
     );
     return {
-      replyText: copy.quickConfirmText(product.name, unitPrice, qty, 'cash'),
+      replyText:
+        `${product.name} x${qty} — KES ${unitPrice * qty}\n\n` +
+        `How is this being paid?\n` +
+        formatNumberedOptions(PAY_METHOD),
+    };
+  }
+
+  private async handleQuickPayment(
+    session: PosOpsSession,
+    text: string,
+  ): Promise<PosOpsReply> {
+    const choice = matchNumberedOption(text, PAY_METHOD);
+    if (!choice) {
+      return {
+        replyText:
+          `How is this being paid?\n` + formatNumberedOptions(PAY_METHOD),
+      };
+    }
+
+    const cashMethod = choice.id as 'cash' | 'mpesa' | 'card';
+    const cart = session.payload.cart ?? [];
+    const first = cart[0];
+    const unitPrice = first?.unitPrice ?? 0;
+    const qty = first?.quantity ?? 1;
+
+    await this.sessions.save(session, {
+      step: POS_OPS_STEPS.QUICK_CONFIRM,
+      payload: { ...session.payload, cashMethod },
+    });
+
+    return {
+      replyText: copy.quickConfirmText(
+        first?.productName ?? 'item',
+        unitPrice,
+        qty,
+        'cash',
+        undefined,
+        cashMethod,
+      ),
     };
   }
 
@@ -943,6 +1001,7 @@ export class PosOpsFlowService {
         qty,
         'credit',
         customer.label,
+        undefined,
       ),
     };
   }
@@ -963,6 +1022,7 @@ export class PosOpsFlowService {
           first?.quantity ?? 1,
           session.payload.saleType ?? 'cash',
           session.payload.customerLabel,
+          session.payload.cashMethod,
         ),
       };
     }
@@ -979,10 +1039,12 @@ export class PosOpsFlowService {
     const saleType = session.payload.saleType ?? 'cash';
     const key = session.payload.idempotencyKey ?? randomUUID();
 
+    // Credit sales: payments array is empty — invoice goes on account.
+    // Cash/M-Pesa/Card: single payment with the actual method.
     const payments =
-      saleType === 'cash'
-        ? [{ method: 'cash', amount: total }]
-        : [{ method: 'credit', amount: 0 }];
+      saleType === 'credit'
+        ? []
+        : [{ method: session.payload.cashMethod ?? 'cash', amount: total }];
 
     const sale = await this.pos.createSale({
       phone,

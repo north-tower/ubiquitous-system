@@ -25,14 +25,23 @@ export function quickConfirmText(
   quantity: number,
   saleType: 'cash' | 'credit',
   customerLabel?: string,
+  cashMethod?: string,
 ): string {
   const total = unitPrice * quantity;
   const line = `• ${productName} x${quantity} @ KES ${unitPrice}`;
   const custLine =
     saleType === 'credit' && customerLabel ? `\nCustomer: ${customerLabel}` : '';
+  const methodLabel =
+    saleType === 'credit'
+      ? 'Credit (on account)'
+      : cashMethod === 'mpesa'
+        ? 'M-Pesa'
+        : cashMethod === 'card'
+          ? 'Direct Bank / Card'
+          : 'Cash';
   return (
     `Confirm sale?\n${line}\n` +
-    `Type: ${saleType}${custLine}\nTotal: KES ${total}\n\n` +
+    `Payment: ${methodLabel}${custLine}\nTotal: KES ${total}\n\n` +
     `1  Yes, confirm\n2  No, cancel`
   );
 }
