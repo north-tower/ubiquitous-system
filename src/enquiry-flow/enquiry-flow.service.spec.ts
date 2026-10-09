@@ -141,6 +141,20 @@ describe('EnquiryFlowService', () => {
     await expect(say('Birthday or party')).resolves.toMatch(/When is it/i);
   });
 
+  it('offers services and budget steps as Twilio list templates', async () => {
+    await say('hi');
+    await say('corporate');
+    const afterDate = await service.handleInbound(conversation, '20th December');
+    expect(afterDate.twilioContent).toBe('services');
+    await say('1');
+    await say('100');
+    const afterVenue = await service.handleInbound(
+      conversation,
+      'Nakuru, ABC Gardens',
+    );
+    expect(afterVenue.twilioContent).toBe('budget');
+  });
+
   it('walks the enquiry conversation and files it on confirm', async () => {
     await expect(say('hi')).resolves.toMatch(/Divine Budgets/);
     await expect(say('Wedding')).resolves.toMatch(/When is it/i);

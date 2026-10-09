@@ -1,7 +1,10 @@
 import { confirmationPlayback, formatSummary } from './enquiry-copy';
 import type { EnquiryPayload } from './enquiry-payload';
 import { ENQUIRY_STEPS, type EnquiryStep } from './enquiry-steps';
-import { TWILIO_ENQUIRY_CONTENT_ENV } from './enquiry-twilio-content';
+import {
+  ENQUIRY_TWILIO_CONTENT_BY_STEP,
+  TWILIO_ENQUIRY_CONTENT_ENV,
+} from './enquiry-twilio-content';
 
 export type EnquiryTwilioContentKey = keyof typeof TWILIO_ENQUIRY_CONTENT_ENV;
 
@@ -11,6 +14,7 @@ export const ENQUIRY_STEP_TWILIO_CONTENT: Partial<
 > = {
   [ENQUIRY_STEPS.AWAITING_RETURNING_CHOICE]: 'returningChoice',
   [ENQUIRY_STEPS.AWAITING_EVENT_TYPE]: 'eventType',
+  [ENQUIRY_STEPS.AWAITING_SERVICES]: 'services',
   [ENQUIRY_STEPS.AWAITING_BUDGET]: 'budget',
   [ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM]: 'budgetConfirm',
   [ENQUIRY_STEPS.AWAITING_PHONE]: 'phone',
@@ -32,6 +36,25 @@ export function enquiryTwilioContentEnvVar(
   return TWILIO_ENQUIRY_CONTENT_ENV[key];
 }
 
+/** First line of outbound copy → Twilio {{1}} for list-picker body text. */
+export function twilioListPickerVariables(
+  step: EnquiryStep,
+  replyText: string,
+): Record<string, string> | undefined {
+  const spec = ENQUIRY_TWILIO_CONTENT_BY_STEP[step];
+  if (spec?.kind !== 'list-picker') {
+    return undefined;
+  }
+  const line = replyText
+    .split('\n')
+    .map((row) => row.trim())
+    .find((row) => row.length > 0);
+  if (!line) {
+    return undefined;
+  }
+  return { '1': line.replace(/\*/g, '') };
+}
+
 export function enquiryReplyForStep(
   step: EnquiryStep,
   replyText: string,
@@ -40,7 +63,12 @@ export function enquiryReplyForStep(
   if (!twilioContent) {
     return { replyText };
   }
-  return { replyText, twilioContent };
+  const twilioContentVariables = twilioListPickerVariables(step, replyText);
+  return {
+    replyText,
+    twilioContent,
+    ...(twilioContentVariables ? { twilioContentVariables } : {}),
+  };
 }
 
 export function confirmEnquiryReply(payload: EnquiryPayload): EnquiryReply {

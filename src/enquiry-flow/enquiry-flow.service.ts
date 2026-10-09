@@ -250,7 +250,10 @@ export class EnquiryFlowService {
   ): Promise<EnquiryReply> {
     const requestedServices = readServices(text);
     if (!requestedServices) {
-      return { replyText: copy.REASK_SERVICES };
+      return enquiryReplyForStep(
+        ENQUIRY_STEPS.AWAITING_SERVICES,
+        copy.REASK_SERVICES,
+      );
     }
     return this.afterField(session, { requestedServices }, {
       step: ENQUIRY_STEPS.AWAITING_GUESTS,
