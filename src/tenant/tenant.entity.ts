@@ -4,6 +4,10 @@ import {
   Entity,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import {
+  DEFAULT_TENANT_PRIMARY_CHANNEL,
+  type TenantPrimaryChannel,
+} from './tenant-primary-channel';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from './tenant-flow';
 
 @Entity({ name: 'tenants' })
@@ -43,6 +47,19 @@ export class Tenant {
     default: DEFAULT_TENANT_FLOW,
   })
   flow: TenantFlow;
+
+  /**
+   * Outbound provider when no inbound channel is set. Immutable after create;
+   * staff tenants pick this in the dashboard once.
+   */
+  @Column({
+    name: 'primary_channel',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+    default: DEFAULT_TENANT_PRIMARY_CHANNEL,
+  })
+  primaryChannel: TenantPrimaryChannel | null;
 
   /** WhatsApp number that scanned this tenant's Baileys QR. */
   @Column({

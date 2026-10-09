@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConversationService } from '../conversation/conversation.service';
+import { TenantService } from '../tenant/tenant.service';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -23,6 +24,7 @@ export class OutboundMessageService {
     private readonly config: ConfigService,
     private readonly router: WhatsappSendRouter,
     private readonly conversations: ConversationService,
+    private readonly tenants: TenantService,
   ) {}
 
   async sendText(job: OutboundTextJob): Promise<void> {
@@ -66,20 +68,38 @@ export class OutboundMessageService {
       }
     }
 
-    const { channel, messageId, raw } = await this.router.sendText(
+    const channel = await this.resolveSendChannel(job);
+    const { channel: usedChannel, messageId, raw } = await this.router.sendText(
       job.to,
       job.text,
-      job.channel,
+      channel,
       job.tenantId,
     );
     await this.conversations.recordOutbound({
       conversationId: job.conversationId,
       text: job.text,
-      rawPayload: { channel, messageId, response: raw },
+      rawPayload: { channel: usedChannel, messageId, response: raw },
     });
     this.logger.log(
-      `Sent WhatsApp text conversation=${job.conversationId} to=${job.to} channel=${channel}`,
+      `Sent WhatsApp text conversation=${job.conversationId} to=${job.to} channel=${usedChannel}`,
     );
+  }
+
+  private async resolveSendChannel(
+    job: OutboundTextJob,
+  ): Promise<WhatsappChannel | undefined> {
+    if (job.channel) {
+      return job.channel;
+    }
+    if (!job.tenantId) {
+      return undefined;
+    }
+    const tenant = await this.tenants.findById(job.tenantId);
+    const primary = tenant?.primaryChannel;
+    if (primary === 'baileys' || primary === 'twilio') {
+      return primary;
+    }
+    return undefined;
   }
 
   private listContentSid(job: OutboundTextJob): string | null {

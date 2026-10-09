@@ -46,6 +46,7 @@ export class DashboardController {
     body: {
       name?: unknown;
       flow?: unknown;
+      primaryChannel?: unknown;
       email?: unknown;
       firstName?: unknown;
       lastName?: unknown;

@@ -1,6 +1,7 @@
 import { type BaileysSessionStatus } from '../outbound/baileys-session';
 import { ConversationState } from '../state-machine/conversation-state.enum';
 import { type LeadScore } from '../lead/lead-profile.entity';
+import { type TenantPrimaryChannel } from '../tenant/tenant-primary-channel';
 import { type TenantFlow } from '../tenant/tenant-flow';
 
 export type DashboardToday = {
@@ -104,6 +105,7 @@ export type DashboardTenantSummary = {
   id: string;
   name: string;
   flow: TenantFlow;
+  primaryChannel: TenantPrimaryChannel | null;
   linkedPhone: string | null;
   status: BaileysSessionStatus | null;
   connectToken: string | null;

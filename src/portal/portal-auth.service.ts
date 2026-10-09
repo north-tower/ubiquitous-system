@@ -185,6 +185,7 @@ export class PortalAuthService {
         lastName: user.lastName,
         tenantName: tenant?.name ?? 'Your business',
         flow: tenant?.flow ?? 'techfind_demo',
+        primaryChannel: tenant?.primaryChannel ?? null,
       },
     };
   }

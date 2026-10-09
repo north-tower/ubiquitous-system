@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConnectLink } from '../connect/connect.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import {
@@ -28,11 +32,15 @@ export class PortalService {
   }
 
   async pair(principal: PortalPrincipal): Promise<ConnectLink> {
+    const tenant = await this.requireTenant(principal.tenantId);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.beginPairing(principal.tenantId);
     return this.whatsapp(principal);
   }
 
   async stopPair(principal: PortalPrincipal): Promise<ConnectLink> {
+    const tenant = await this.requireTenant(principal.tenantId);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.endPairing(principal.tenantId);
     return this.whatsapp(principal);
   }
@@ -69,6 +77,16 @@ export class PortalService {
       throw new NotFoundException('Unknown tenant');
     }
     return tenant;
+  }
+
+  private assertBaileysPrimary(
+    primaryChannel: string | null | undefined,
+  ): void {
+    if (primaryChannel === 'twilio') {
+      throw new BadRequestException(
+        'This tenant uses Twilio. QR pairing is only for Baileys tenants.',
+      );
+    }
   }
 
   private snapshot(

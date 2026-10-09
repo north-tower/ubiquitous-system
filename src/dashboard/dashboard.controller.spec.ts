@@ -100,11 +100,16 @@ describe('DashboardController conversations/:id', () => {
     tenantLinks.create.mockResolvedValue({ id: 'tenant-9' });
 
     await expect(
-      controller.createTenant({ name: 'Divine', flow: 'enquiry_intake' }),
+      controller.createTenant({
+        name: 'Divine',
+        flow: 'enquiry_intake',
+        primaryChannel: 'twilio',
+      }),
     ).resolves.toEqual({ id: 'tenant-9' });
     expect(tenantLinks.create).toHaveBeenCalledWith({
       name: 'Divine',
       flow: 'enquiry_intake',
+      primaryChannel: 'twilio',
     });
   });
 });

@@ -10,6 +10,12 @@ import { randomBytes, randomUUID } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 import { Tenant } from './tenant.entity';
 import {
+  DEFAULT_TENANT_PRIMARY_CHANNEL,
+  isTenantPrimaryChannel,
+  TENANT_PRIMARY_CHANNELS,
+  type TenantPrimaryChannel,
+} from './tenant-primary-channel';
+import {
   DEFAULT_TENANT_FLOW,
   isTenantFlow,
   TENANT_FLOWS,
@@ -78,6 +84,7 @@ export class TenantService implements OnModuleInit {
   async createStaffTenant(input: {
     name: string;
     flow: string;
+    primaryChannel: string;
   }): Promise<Tenant> {
     const name = input.name.trim();
     if (!name) {
@@ -91,17 +98,51 @@ export class TenantService implements OnModuleInit {
         `flow must be ${TENANT_FLOWS.join(' or ')}`,
       );
     }
+    if (!isTenantPrimaryChannel(input.primaryChannel)) {
+      throw new BadRequestException(
+        `primaryChannel must be ${TENANT_PRIMARY_CHANNELS.join(' or ')}`,
+      );
+    }
+    this.assertPrimaryChannelReady(input.primaryChannel);
 
     return this.tenants.save(
       this.tenants.create({
         name,
         flow: input.flow,
+        primaryChannel: input.primaryChannel,
         whatsappPhoneNumberId: `baileys:${randomUUID()}`,
         whatsappBusinessAccountId: null,
         linkedPhone: null,
         connectToken: newConnectToken(),
       }),
     );
+  }
+
+  private assertPrimaryChannelReady(channel: TenantPrimaryChannel): void {
+    if (channel === 'twilio') {
+      const ready = Boolean(
+        this.config.get<string>('TWILIO_ACCOUNT_SID') &&
+          this.config.get<string>('TWILIO_AUTH_TOKEN') &&
+          this.config.get<string>('TWILIO_WHATSAPP_FROM'),
+      );
+      if (!ready) {
+        throw new BadRequestException(
+          'Twilio WhatsApp is not configured on this server',
+        );
+      }
+      return;
+    }
+    if (this.config.get<string>('BAILEYS_ENABLED') !== 'true') {
+      throw new BadRequestException('Baileys is not enabled on this server');
+    }
+  }
+
+  private seedPrimaryChannel(): TenantPrimaryChannel {
+    const configured = this.config.get<string>('WHATSAPP_PRIMARY_CHANNEL');
+    if (configured === 'twilio') {
+      return 'twilio';
+    }
+    return DEFAULT_TENANT_PRIMARY_CHANNEL;
   }
 
   async setLinkedPhone(id: string, linkedPhone: string): Promise<void> {
@@ -148,6 +189,7 @@ export class TenantService implements OnModuleInit {
         whatsappPhoneNumberId,
         whatsappBusinessAccountId,
         flow: flow ?? DEFAULT_TENANT_FLOW,
+        primaryChannel: this.seedPrimaryChannel(),
         connectToken: newConnectToken(),
       }),
     );

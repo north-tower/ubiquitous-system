@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { PortalOnboardingService } from '../portal/portal-onboarding.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -19,6 +23,7 @@ export class DashboardTenantService {
   async create(body: {
     name?: unknown;
     flow?: unknown;
+    primaryChannel?: unknown;
     email?: unknown;
     firstName?: unknown;
     lastName?: unknown;
@@ -26,7 +31,13 @@ export class DashboardTenantService {
   }): Promise<CreateTenantResult> {
     const name = typeof body.name === 'string' ? body.name : '';
     const flow = typeof body.flow === 'string' ? body.flow : '';
-    const tenant = await this.tenants.createStaffTenant({ name, flow });
+    const primaryChannel =
+      typeof body.primaryChannel === 'string' ? body.primaryChannel : '';
+    const tenant = await this.tenants.createStaffTenant({
+      name,
+      flow,
+      primaryChannel,
+    });
 
     const email = typeof body.email === 'string' ? body.email : '';
     const firstName = typeof body.firstName === 'string' ? body.firstName : '';
@@ -71,13 +82,15 @@ export class DashboardTenantService {
   }
 
   async pair(id: string): Promise<DashboardTenantWhatsapp> {
-    await this.requireTenant(id);
+    const tenant = await this.requireTenant(id);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.beginPairing(id);
     return this.whatsapp(id);
   }
 
   async stopPair(id: string): Promise<DashboardTenantWhatsapp> {
-    await this.requireTenant(id);
+    const tenant = await this.requireTenant(id);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.endPairing(id);
     return this.whatsapp(id);
   }
@@ -91,6 +104,7 @@ export class DashboardTenantService {
         id: tenant.id,
         name: tenant.name,
         flow: tenant.flow,
+        primaryChannel: tenant.primaryChannel,
         linkedPhone: tenant.linkedPhone,
         status: this.baileys.connectionStatus(tenant.id),
         connectToken: tenant.connectToken,
@@ -121,5 +135,15 @@ export class DashboardTenantService {
       throw new NotFoundException('Unknown tenant');
     }
     return tenant;
+  }
+
+  private assertBaileysPrimary(
+    primaryChannel: string | null | undefined,
+  ): void {
+    if (primaryChannel === 'twilio') {
+      throw new BadRequestException(
+        'This tenant uses Twilio. QR pairing is only for Baileys tenants.',
+      );
+    }
   }
 }

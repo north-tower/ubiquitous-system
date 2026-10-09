@@ -78,6 +78,7 @@ export class PortalController {
       ...principal,
       tenantName: tenant?.name ?? 'Your business',
       flow: tenant?.flow ?? DEFAULT_TENANT_FLOW,
+      primaryChannel: tenant?.primaryChannel ?? null,
     };
   }
 

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { PortalOnboardingService } from '../portal/portal-onboarding.service';
 import { Tenant } from '../tenant/tenant.entity';
@@ -48,11 +48,16 @@ describe('DashboardTenantService', () => {
     });
 
     await expect(
-      service.create({ name: 'Divine Budget', flow: 'enquiry_intake' }),
+      service.create({
+        name: 'Divine Budget',
+        flow: 'enquiry_intake',
+        primaryChannel: 'baileys',
+      }),
     ).resolves.toEqual({ id: 'tenant-9', connectToken: 'tok' });
     expect(tenants.createStaffTenant).toHaveBeenCalledWith({
       name: 'Divine Budget',
       flow: 'enquiry_intake',
+      primaryChannel: 'baileys',
     });
     expect(baileys.beginPairing).not.toHaveBeenCalled();
     expect(onboarding.inviteOwnerForTenant).not.toHaveBeenCalled();
@@ -92,6 +97,7 @@ describe('DashboardTenantService', () => {
     tenants.findById.mockResolvedValue({
       id: 'tenant-9',
       linkedPhone: null,
+      primaryChannel: 'baileys',
     } as Tenant);
     baileys.beginPairing.mockResolvedValue(undefined);
     baileys.whatsappLink.mockReturnValue({
@@ -107,12 +113,25 @@ describe('DashboardTenantService', () => {
     expect(baileys.beginPairing).toHaveBeenCalledWith('tenant-9');
   });
 
+  it('rejects QR pairing for Twilio-primary tenants', async () => {
+    tenants.findById.mockResolvedValue({
+      id: 'tenant-9',
+      primaryChannel: 'twilio',
+    } as Tenant);
+
+    await expect(service.pair('tenant-9')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(baileys.beginPairing).not.toHaveBeenCalled();
+  });
+
   it('lists flow, linked phone, connection status, and owner', async () => {
     tenants.list.mockResolvedValue([
       {
         id: 'tenant-1',
         name: 'Techfind Consulting',
         flow: 'techfind_demo',
+        primaryChannel: 'baileys',
         linkedPhone: '254700000001',
         connectToken: 'secret-token',
       },
@@ -128,6 +147,7 @@ describe('DashboardTenantService', () => {
         id: 'tenant-1',
         name: 'Techfind Consulting',
         flow: 'techfind_demo',
+        primaryChannel: 'baileys',
         linkedPhone: '254700000001',
         status: 'connected',
         connectToken: 'secret-token',

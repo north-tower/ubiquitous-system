@@ -50,16 +50,24 @@ describe('TenantService.createStaffTenant', () => {
   beforeEach(() => {
     tenants.create.mockClear();
     tenants.save.mockClear();
+    config.get.mockImplementation((key: string) => {
+      if (key === 'BAILEYS_ENABLED') {
+        return 'true';
+      }
+      return undefined;
+    });
   });
 
   it('stores the chosen flow and a baileys placeholder phone id', async () => {
     const saved = await service.createStaffTenant({
       name: '  Divine Budget  ',
       flow: 'enquiry_intake',
+      primaryChannel: 'baileys',
     });
 
     expect(saved.name).toBe('Divine Budget');
     expect(saved.flow).toBe('enquiry_intake');
+    expect(saved.primaryChannel).toBe('baileys');
     expect(saved.linkedPhone).toBeNull();
     expect(saved.connectToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(saved.whatsappPhoneNumberId).toMatch(/^baileys:[0-9a-f-]{36}$/i);
@@ -67,12 +75,30 @@ describe('TenantService.createStaffTenant', () => {
 
   it('rejects a blank name or an unknown flow', async () => {
     await expect(
-      service.createStaffTenant({ name: '   ', flow: 'enquiry_intake' }),
+      service.createStaffTenant({
+        name: '   ',
+        flow: 'enquiry_intake',
+        primaryChannel: 'baileys',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.createStaffTenant({ name: 'Divine', flow: 'other' }),
+      service.createStaffTenant({
+        name: 'Divine',
+        flow: 'other',
+        primaryChannel: 'baileys',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tenants.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown primary channel', async () => {
+    await expect(
+      service.createStaffTenant({
+        name: 'Divine',
+        flow: 'enquiry_intake',
+        primaryChannel: 'meta',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
