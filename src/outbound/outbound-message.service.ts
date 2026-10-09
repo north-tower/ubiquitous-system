@@ -4,6 +4,13 @@ import type { EnquiryTwilioContentKey } from '../enquiry-flow/enquiry-twilio-rep
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
 import { resolveEnquiryTwilioContentForSend } from './resolve-enquiry-twilio-content-send';
+import {
+  isTwilioContentSendDebug,
+  maskContentSid,
+  previewContentVariables,
+  summarizeContentVariables,
+} from './twilio-content-send-debug';
+import { TwilioSendError } from './twilio-whatsapp.client';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -52,6 +59,15 @@ export class OutboundMessageService {
     }
     const contentSend = this.resolveTwilioContentSend(job);
     if (contentSend) {
+      const varSummary = summarizeContentVariables(contentSend.contentVariables);
+      this.logger.log(
+        `Twilio content attempt conversation=${job.conversationId} template=${job.twilioContent} sid=${maskContentSid(contentSend.contentSid)} sidSource=${contentSend.trace.sidSource} sidEnv=${contentSend.trace.sidEnvVar} flowSidConfigured=${contentSend.trace.servicesFlowSidConfigured} listSidConfigured=${contentSend.trace.servicesListSidConfigured} sendFlowToken=${contentSend.trace.sendFlowTokenEnabled} outboundVarCount=${varSummary.count} inboundVarKeys=${contentSend.trace.inboundVariableKeys.join(',') || 'none'}`,
+      );
+      if (isTwilioContentSendDebug(this.config)) {
+        this.logger.debug(
+          `Twilio content trace conversation=${job.conversationId} ${JSON.stringify(contentSend.trace)} preview=${JSON.stringify(previewContentVariables(contentSend.contentVariables))} jobPreview=${JSON.stringify(previewContentVariables(job.twilioContentVariables))}`,
+        );
+      }
       try {
         const { channel, messageId, raw } = await this.router.sendContent(
           job.to,
@@ -74,8 +90,10 @@ export class OutboundMessageService {
         );
         return;
       } catch (error) {
+        const twilioRequest =
+          error instanceof TwilioSendError ? error.contentRequest : undefined;
         this.logger.error(
-          `WhatsApp content send failed, falling back to text conversation=${job.conversationId}: ${
+          `WhatsApp content send failed, falling back to text conversation=${job.conversationId} template=${job.twilioContent ?? 'none'} sid=${maskContentSid(contentSend.contentSid)} trace=${JSON.stringify(contentSend.trace)} twilioRequest=${twilioRequest ? JSON.stringify({ ...twilioRequest, contentSid: maskContentSid(twilioRequest.contentSid) }) : 'n/a'}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -99,17 +117,20 @@ export class OutboundMessageService {
     );
   }
 
-  private resolveTwilioContentSend(job: OutboundTextJob): {
-    contentSid: string;
-    contentVariables?: Record<string, string>;
-  } | null {
+  private resolveTwilioContentSend(job: OutboundTextJob) {
     if (!job.twilioContent || job.channel === 'meta' || job.channel === 'baileys') {
       return null;
     }
-    return resolveEnquiryTwilioContentForSend(this.config, job.twilioContent, {
+    const plan = resolveEnquiryTwilioContentForSend(this.config, job.twilioContent, {
       twilioContentVariables: job.twilioContentVariables,
       text: job.text,
     });
+    if (!plan && isTwilioContentSendDebug(this.config)) {
+      this.logger.debug(
+        `Twilio content skipped (no SID) conversation=${job.conversationId} template=${job.twilioContent}`,
+      );
+    }
+    return plan;
   }
 
   private async resolveSendChannel(

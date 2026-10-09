@@ -1,11 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  isTwilioContentSendDebug,
+  maskWhatsappAddress,
+  previewContentVariables,
+  summarizeContentVariables,
+} from './twilio-content-send-debug';
 import { toWhatsappAddress, type WhatsappSender } from './whatsapp-channel';
+
+export type TwilioContentRequestSummary = {
+  contentSid: string;
+  contentVariablesJson: string | null;
+  variableSummary: ReturnType<typeof summarizeContentVariables>;
+  to: string;
+  from: string;
+};
 
 export class TwilioSendError extends Error {
   constructor(
     public readonly status: number,
     public readonly body: string,
+    public readonly contentRequest?: TwilioContentRequestSummary,
   ) {
     super(`Twilio WhatsApp send failed (${status}): ${body}`);
     this.name = 'TwilioSendError';
@@ -15,6 +30,7 @@ export class TwilioSendError extends Error {
 @Injectable()
 export class TwilioWhatsappClient implements WhatsappSender {
   readonly channel = 'twilio' as const;
+  private readonly logger = new Logger(TwilioWhatsappClient.name);
 
   constructor(private readonly config: ConfigService) {}
 
@@ -39,15 +55,30 @@ export class TwilioWhatsappClient implements WhatsappSender {
     contentVariables?: Record<string, string>,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const fields: Record<string, string> = { ContentSid: contentSid };
-    if (contentVariables && Object.keys(contentVariables).length > 0) {
+    const variableSummary = summarizeContentVariables(contentVariables);
+    if (contentVariables && variableSummary.count > 0) {
       fields.ContentVariables = JSON.stringify(contentVariables);
     }
-    return this.postMessage(to, fields);
+    const from = this.config.get<string>('TWILIO_WHATSAPP_FROM') ?? '';
+    const contentRequest: TwilioContentRequestSummary = {
+      contentSid,
+      contentVariablesJson: fields.ContentVariables ?? null,
+      variableSummary,
+      to: maskWhatsappAddress(to),
+      from: maskWhatsappAddress(from),
+    };
+    if (isTwilioContentSendDebug(this.config)) {
+      this.logger.debug(
+        `Twilio content POST contentSid=${contentSid} to=${contentRequest.to} vars=${JSON.stringify(variableSummary)} preview=${JSON.stringify(previewContentVariables(contentVariables))}`,
+      );
+    }
+    return this.postMessage(to, fields, contentRequest);
   }
 
   private async postMessage(
     to: string,
     fields: Record<string, string>,
+    contentRequest?: TwilioContentRequestSummary,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const accountSid = this.config.get<string>('TWILIO_ACCOUNT_SID');
     const token = this.config.get<string>('TWILIO_AUTH_TOKEN');
@@ -83,7 +114,11 @@ export class TwilioWhatsappClient implements WhatsappSender {
       raw = null;
     }
     if (!response.ok) {
-      throw new TwilioSendError(response.status, JSON.stringify(raw));
+      throw new TwilioSendError(
+        response.status,
+        JSON.stringify(raw),
+        contentRequest,
+      );
     }
 
     return { messageId: readTwilioSid(raw), raw };

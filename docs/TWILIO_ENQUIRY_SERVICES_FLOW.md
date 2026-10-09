@@ -48,4 +48,13 @@ Restart the API after changing env.
 1. Run enquiry flow to the services step → message should show **Open flow** / survey button, not only a numbered text list.
 2. Select multiple services → submit → bot should ask for guest count with combined services on the summary.
 
+## Debugging Twilio 21656
+
+Set `TWILIO_CONTENT_SEND_DEBUG=true` and restart the API. On each content send you should see:
+
+- `Twilio content attempt` — `sidSource` should be `services_flow` when the Flow SID is loaded; `outboundVarCount` should be `0` for static `twilio/flows` templates.
+- On failure, `trace=…` and `twilioRequest=…` (whether `contentVariablesJson` was null).
+
+If `sidSource=services_list` but you expected Flow, the container does not have `TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID` (rebuild/restart after env changes).
+
 Tests: `pnpm test -- parse-services-flow-response parse-twilio resolve-enquiry-twilio-content-send`

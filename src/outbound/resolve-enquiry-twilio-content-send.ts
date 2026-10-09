@@ -4,6 +4,33 @@ import {
   type EnquiryTwilioContentKey,
   enquiryTwilioContentEnvVar,
 } from '../enquiry-flow/enquiry-twilio-reply';
+import { TWILIO_ENQUIRY_CONTENT_ENV } from '../enquiry-flow/enquiry-twilio-content';
+
+export type EnquiryTwilioContentSidSource =
+  | 'services_flow'
+  | 'services_list'
+  | 'env';
+
+export type EnquiryTwilioContentSendTrace = {
+  contentKey: EnquiryTwilioContentKey;
+  sidSource: EnquiryTwilioContentSidSource;
+  sidEnvVar: string;
+  servicesFlowSidConfigured: boolean;
+  servicesListSidConfigured: boolean;
+  sendFlowTokenEnabled: boolean;
+  /** Variables on the outbound job before resolution (e.g. list-picker {{1}}). */
+  inboundVariableKeys: string[];
+  /** Variables actually sent to Twilio after resolution. */
+  outboundVariableKeys: string[];
+  /** True when Flow template is used without flow_token (inbound vars stripped). */
+  droppedInboundVariablesForFlow: boolean;
+};
+
+export type EnquiryTwilioContentSendPlan = {
+  contentSid: string;
+  contentVariables?: Record<string, string>;
+  trace: EnquiryTwilioContentSendTrace;
+};
 
 export function resolveEnquiryTwilioContentForSend(
   config: ConfigService,
@@ -12,21 +39,51 @@ export function resolveEnquiryTwilioContentForSend(
     twilioContentVariables?: Record<string, string>;
     text: string;
   },
-): { contentSid: string; contentVariables?: Record<string, string> } | null {
+): EnquiryTwilioContentSendPlan | null {
+  const inboundVariableKeys = Object.keys(input.twilioContentVariables ?? {});
+  const flowSid = config
+    .get<string>('TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID')
+    ?.trim();
+  const listSid = config
+    .get<string>(TWILIO_ENQUIRY_CONTENT_ENV.services)
+    ?.trim();
+  const sendFlowToken = servicesFlowSendFlowToken(config);
+
   if (key === 'services') {
-    const flowSid = config
-      .get<string>('TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID')
-      ?.trim();
     if (flowSid) {
-      // twilio/flows templates in Content Template Builder are usually static (no {{1}}).
-      // Sending ContentVariables then triggers Twilio 21656. Opt in for whatsapp/flows with flow_token.
-      if (servicesFlowSendFlowToken(config)) {
+      const droppedInboundVariablesForFlow = inboundVariableKeys.length > 0 && !sendFlowToken;
+      if (sendFlowToken) {
+        const contentVariables = flowContentVariables(undefined);
         return {
           contentSid: flowSid,
-          contentVariables: flowContentVariables(undefined),
+          contentVariables,
+          trace: {
+            contentKey: key,
+            sidSource: 'services_flow',
+            sidEnvVar: TWILIO_ENQUIRY_CONTENT_ENV.servicesFlow,
+            servicesFlowSidConfigured: true,
+            servicesListSidConfigured: Boolean(listSid),
+            sendFlowTokenEnabled: true,
+            inboundVariableKeys,
+            outboundVariableKeys: Object.keys(contentVariables),
+            droppedInboundVariablesForFlow: false,
+          },
         };
       }
-      return { contentSid: flowSid };
+      return {
+        contentSid: flowSid,
+        trace: {
+          contentKey: key,
+          sidSource: 'services_flow',
+          sidEnvVar: TWILIO_ENQUIRY_CONTENT_ENV.servicesFlow,
+          servicesFlowSidConfigured: true,
+          servicesListSidConfigured: Boolean(listSid),
+          sendFlowTokenEnabled: false,
+          inboundVariableKeys,
+          outboundVariableKeys: [],
+          droppedInboundVariablesForFlow,
+        },
+      };
     }
   }
 
@@ -35,9 +92,23 @@ export function resolveEnquiryTwilioContentForSend(
   if (!contentSid) {
     return null;
   }
+  const sidSource: EnquiryTwilioContentSidSource =
+    key === 'services' ? 'services_list' : 'env';
+  const outboundVariableKeys = Object.keys(input.twilioContentVariables ?? {});
   return {
     contentSid,
     contentVariables: input.twilioContentVariables,
+    trace: {
+      contentKey: key,
+      sidSource,
+      sidEnvVar: envKey,
+      servicesFlowSidConfigured: Boolean(flowSid),
+      servicesListSidConfigured: Boolean(listSid),
+      sendFlowTokenEnabled: sendFlowToken,
+      inboundVariableKeys,
+      outboundVariableKeys,
+      droppedInboundVariablesForFlow: false,
+    },
   };
 }
 

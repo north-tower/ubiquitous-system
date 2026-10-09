@@ -57,9 +57,13 @@ describe('resolveEnquiryTwilioContentForSend', () => {
       text: 'Pick services',
       twilioContentVariables: { '1': 'Question line' },
     });
-    expect(resolved).toEqual({
+    expect(resolved).toMatchObject({
       contentSid: 'HXlist',
       contentVariables: { '1': 'Question line' },
+      trace: {
+        sidSource: 'services_list',
+        servicesFlowSidConfigured: false,
+      },
     });
   });
 });
