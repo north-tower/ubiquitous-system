@@ -8,6 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-flow.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
+import type {
+  EnquiryReply,
+  EnquiryTwilioContentKey,
+} from '../enquiry-flow/enquiry-twilio-reply';
 import { InsightfulPosError } from '../insightful-pos/insightful-pos.types';
 import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
 import {
@@ -173,7 +177,8 @@ export class WhatsappWebhookService implements OnModuleInit {
     }
 
     let replyText: string;
-    let list: 'event_type' | undefined;
+    let twilioContent: EnquiryTwilioContentKey | undefined;
+    let twilioContentVariables: EnquiryReply['twilioContentVariables'];
     let silent = false;
     if (input.flow === 'enquiry_intake') {
       const reply = await this.enquiryFlow.handleInbound(
@@ -181,7 +186,8 @@ export class WhatsappWebhookService implements OnModuleInit {
         input.text,
       );
       replyText = reply.replyText;
-      list = reply.list;
+      twilioContent = reply.twilioContent;
+      twilioContentVariables = reply.twilioContentVariables;
       silent = Boolean(reply.silent);
     } else if (input.flow === 'pos_ops') {
       const reply = await this.posOpsFlow.handleInbound(
@@ -210,7 +216,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         text: replyText,
         channel: input.channel,
         tenantId: input.tenantId,
-        ...(list ? { list } : {}),
+        ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
       },
     ]);
   }

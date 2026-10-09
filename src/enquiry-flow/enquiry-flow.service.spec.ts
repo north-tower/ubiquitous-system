@@ -133,7 +133,7 @@ describe('EnquiryFlowService', () => {
 
   it('offers the opening event question as a tappable list', async () => {
     const opening = await service.handleInbound(conversation, 'hi');
-    expect(opening.list).toBe('event_type');
+    expect(opening.twilioContent).toBe('eventType');
     expect(opening.replyText).toMatch(/What are you planning/i);
     await expect(say('church')).resolves.toMatch(/When is it/i);
     sessions.reset();

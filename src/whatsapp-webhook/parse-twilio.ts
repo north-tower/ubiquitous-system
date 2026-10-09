@@ -38,6 +38,26 @@ function toDigits(phone: string): string {
   return phone.replace(/[^\d]/g, '');
 }
 
+/** List-picker row id, quick-reply ButtonPayload, or Body (in that order). */
+function readTwilioInboundChoice(fields: Record<string, string>): string | null {
+  const listId = fields.ListId?.trim();
+  if (listId) {
+    return listId;
+  }
+  const payload = fields.ButtonPayload?.trim();
+  if (payload) {
+    if (payload === 'use_whatsapp') {
+      return '1';
+    }
+    return payload;
+  }
+  const buttonText = fields.ButtonText?.trim();
+  if (buttonText) {
+    return buttonText;
+  }
+  return null;
+}
+
 export function parseTwilioWebhook(body: unknown): ParsedTwilioInbound | null {
   const fields = formFields(body);
   if (!fields) {
@@ -58,8 +78,9 @@ export function parseTwilioWebhook(body: unknown): ParsedTwilioInbound | null {
     return null;
   }
 
-  const listChoice = fields.ListId?.trim() ? fields.ListId.trim() : null;
-  const bodyText = listChoice ?? (fields.Body?.trim() ? fields.Body : null);
+  const inboundChoice = readTwilioInboundChoice(fields);
+  const bodyText =
+    inboundChoice ?? (fields.Body?.trim() ? fields.Body.trim() : null);
 
   return {
     waId,

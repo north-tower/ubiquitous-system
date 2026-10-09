@@ -25,6 +25,31 @@ describe('parseTwilioWebhook', () => {
     });
   });
 
+  it('uses quick-reply ButtonPayload when present', () => {
+    expect(
+      parseTwilioWebhook({
+        ...SAMPLE_TWILIO_TEXT_WEBHOOK,
+        Body: 'Yes, send it',
+        ButtonPayload: 'confirm',
+        ButtonText: 'Yes, send it',
+      }),
+    ).toMatchObject({
+      text: 'confirm',
+    });
+  });
+
+  it('maps use_whatsapp phone quick-reply to reply 1', () => {
+    expect(
+      parseTwilioWebhook({
+        ...SAMPLE_TWILIO_TEXT_WEBHOOK,
+        Body: 'Use this number',
+        ButtonPayload: 'use_whatsapp',
+      }),
+    ).toMatchObject({
+      text: '1',
+    });
+  });
+
   it('uses the list row id when the customer taps a choice', () => {
     expect(
       parseTwilioWebhook({

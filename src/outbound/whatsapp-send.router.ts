@@ -65,13 +65,18 @@ export class WhatsappSendRouter {
   async sendContent(
     to: string,
     contentSid: string,
+    contentVariables?: Record<string, string>,
   ): Promise<WhatsappSendResult> {
     if (!this.twilio.isConfigured()) {
       throw new Error(
         'Twilio is not configured. A list template can only be sent through Twilio.',
       );
     }
-    const result = await this.twilio.sendContent(to, contentSid);
+    const result = await this.twilio.sendContent(
+      to,
+      contentSid,
+      contentVariables,
+    );
     return { channel: 'twilio', ...result };
   }
 

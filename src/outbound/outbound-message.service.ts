@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { EnquiryTwilioContentKey } from '../enquiry-flow/enquiry-twilio-reply';
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
+import { resolveEnquiryTwilioContentSid } from './enquiry-twilio-content-sid';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -12,8 +14,9 @@ export type OutboundTextJob = {
   channel?: WhatsappChannel;
   /** Baileys replies go out on the socket that received the inbound message. */
   tenantId?: string;
-  /** Twilio list-picker. Sent only when that channel is Twilio and the matching Content SID is set. */
-  list?: 'event_type';
+  /** Twilio Content template for enquiry_intake (Twilio channel only). */
+  twilioContent?: EnquiryTwilioContentKey;
+  twilioContentVariables?: Record<string, string>;
 };
 
 @Injectable()
@@ -36,32 +39,43 @@ export class OutboundMessageService {
       await this.conversations.recordOutbound({
         conversationId: job.conversationId,
         text: job.text,
-        rawPayload: { skipped: true, channel: job.channel ?? null },
+        rawPayload: {
+          skipped: true,
+          channel: job.channel ?? null,
+          twilioContent: job.twilioContent ?? null,
+        },
       });
       this.logger.warn(
         `Skipped WhatsApp send (test/skip) conversation=${job.conversationId} channel=${job.channel ?? 'auto'}`,
       );
       return;
     }
-    const contentSid = this.listContentSid(job);
-    if (contentSid) {
+    const contentSend = this.resolveTwilioContentSend(job);
+    if (contentSend) {
       try {
         const { channel, messageId, raw } = await this.router.sendContent(
           job.to,
-          contentSid,
+          contentSend.contentSid,
+          contentSend.contentVariables,
         );
         await this.conversations.recordOutbound({
           conversationId: job.conversationId,
           text: job.text,
-          rawPayload: { channel, messageId, contentSid, response: raw },
+          rawPayload: {
+            channel,
+            messageId,
+            contentSid: contentSend.contentSid,
+            contentVariables: contentSend.contentVariables ?? null,
+            response: raw,
+          },
         });
         this.logger.log(
-          `Sent WhatsApp list conversation=${job.conversationId} to=${job.to} channel=${channel}`,
+          `Sent WhatsApp content conversation=${job.conversationId} to=${job.to} channel=${channel} template=${job.twilioContent}`,
         );
         return;
       } catch (error) {
         this.logger.error(
-          `WhatsApp list send failed, falling back to text conversation=${job.conversationId}: ${
+          `WhatsApp content send failed, falling back to text conversation=${job.conversationId}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -85,6 +99,26 @@ export class OutboundMessageService {
     );
   }
 
+  private resolveTwilioContentSend(job: OutboundTextJob): {
+    contentSid: string;
+    contentVariables?: Record<string, string>;
+  } | null {
+    if (!job.twilioContent || job.channel === 'meta' || job.channel === 'baileys') {
+      return null;
+    }
+    const contentSid = resolveEnquiryTwilioContentSid(
+      this.config,
+      job.twilioContent,
+    );
+    if (!contentSid) {
+      return null;
+    }
+    return {
+      contentSid,
+      contentVariables: job.twilioContentVariables,
+    };
+  }
+
   private async resolveSendChannel(
     job: OutboundTextJob,
   ): Promise<WhatsappChannel | undefined> {
@@ -100,20 +134,6 @@ export class OutboundMessageService {
       return primary;
     }
     return undefined;
-  }
-
-  private listContentSid(job: OutboundTextJob): string | null {
-    if (
-      job.list !== 'event_type' ||
-      job.channel === 'meta' ||
-      job.channel === 'baileys'
-    ) {
-      return null;
-    }
-    const sid = this.config
-      .get<string>('TWILIO_EVENT_TYPE_CONTENT_SID')
-      ?.trim();
-    return sid ? sid : null;
   }
 
   async sendAll(jobs: OutboundTextJob[]): Promise<void> {

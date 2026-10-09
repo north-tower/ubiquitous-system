@@ -47,7 +47,7 @@ export const SERVICE_OPTIONS: NumberedOption[] = [
 export const RETURNING_OPTIONS: NumberedOption[] = [
   {
     id: 'wait',
-    label: "I'll wait for the team",
+    label: "Wait for the team",
     aliases: ['wait', "i'll wait", 'ok', 'okay', 'that one', 'existing'],
   },
   {

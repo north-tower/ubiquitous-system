@@ -330,7 +330,7 @@ describe('WhatsappWebhookService', () => {
     });
     enquiryFlow.handleInbound.mockResolvedValue({
       replyText: 'what are you planning?',
-      list: 'event_type',
+      twilioContent: 'eventType',
     });
 
     await createService().handleTwilioInbound({
@@ -345,7 +345,7 @@ describe('WhatsappWebhookService', () => {
       expect.objectContaining({
         text: 'what are you planning?',
         channel: 'twilio',
-        list: 'event_type',
+        twilioContent: 'eventType',
       }),
     ]);
   });

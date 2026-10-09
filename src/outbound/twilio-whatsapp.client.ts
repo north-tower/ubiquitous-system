@@ -36,8 +36,13 @@ export class TwilioWhatsappClient implements WhatsappSender {
   async sendContent(
     to: string,
     contentSid: string,
+    contentVariables?: Record<string, string>,
   ): Promise<{ messageId: string | null; raw: unknown }> {
-    return this.postMessage(to, { ContentSid: contentSid });
+    const fields: Record<string, string> = { ContentSid: contentSid };
+    if (contentVariables && Object.keys(contentVariables).length > 0) {
+      fields.ContentVariables = JSON.stringify(contentVariables);
+    }
+    return this.postMessage(to, fields);
   }
 
   private async postMessage(
