@@ -23,7 +23,9 @@ Typed replies still work: `1, 2`, `sound and lighting`, etc.
 3. Add a **Footer** submit button.
 4. Copy the template **Content SID** (`HX…`) → `TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID`.
 
-No `flow_token` variable is required for many `twilio/flows` templates; the app still sends `{{1}}` as a unique token when the template defines it (e.g. `whatsapp/flows`).
+For static `twilio/flows` templates (no `{{1}}` in the builder), the API sends **no** `ContentVariables`. If Twilio returns error **21656**, remove any stray variables from the send path or ensure the template has no unused placeholders.
+
+For `whatsapp/flows` with `flow_token: "{{1}}"`, set `TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN=true` so the app sends a unique token in variable `1`.
 
 ## Option B — `whatsapp/flows` (Meta Flow + Content API)
 

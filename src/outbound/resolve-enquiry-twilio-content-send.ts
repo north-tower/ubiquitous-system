@@ -18,10 +18,15 @@ export function resolveEnquiryTwilioContentForSend(
       .get<string>('TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID')
       ?.trim();
     if (flowSid) {
-      return {
-        contentSid: flowSid,
-        contentVariables: flowContentVariables(input.twilioContentVariables),
-      };
+      // twilio/flows templates in Content Template Builder are usually static (no {{1}}).
+      // Sending ContentVariables then triggers Twilio 21656. Opt in for whatsapp/flows with flow_token.
+      if (servicesFlowSendFlowToken(config)) {
+        return {
+          contentSid: flowSid,
+          contentVariables: flowContentVariables(undefined),
+        };
+      }
+      return { contentSid: flowSid };
     }
   }
 
@@ -34,6 +39,14 @@ export function resolveEnquiryTwilioContentForSend(
     contentSid,
     contentVariables: input.twilioContentVariables,
   };
+}
+
+function servicesFlowSendFlowToken(config: ConfigService): boolean {
+  const raw = config
+    .get<string>('TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN')
+    ?.trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
 }
 
 /** whatsapp/flows templates often bind flow_token to {{1}}. */

@@ -112,9 +112,7 @@ describe('OutboundMessageService enquiry Twilio content', () => {
     expect(router.sendContent).toHaveBeenCalledWith(
       '254711111111',
       'HXflow',
-      expect.objectContaining({
-        '1': expect.stringMatching(/^[0-9a-f-]{36}$/i),
-      }),
+      undefined,
     );
   });
 

@@ -19,9 +19,28 @@ describe('resolveEnquiryTwilioContentForSend', () => {
       text: 'Pick services',
     });
     expect(resolved?.contentSid).toBe('HXflow');
-    expect(resolved?.contentVariables?.['1']).toMatch(
-      /^[0-9a-f-]{36}$/i,
-    );
+    expect(resolved?.contentVariables).toBeUndefined();
+  });
+
+  it('sends flow_token {{1}} when TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN is set', () => {
+    const config = {
+      get: (key: string) => {
+        if (key === 'TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID') {
+          return 'HXflow';
+        }
+        if (key === 'TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN') {
+          return 'true';
+        }
+        return undefined;
+      },
+    } as unknown as ConfigService;
+
+    const resolved = resolveEnquiryTwilioContentForSend(config, 'services', {
+      text: 'Pick services',
+      twilioContentVariables: { '1': 'Should not use list-picker line' },
+    });
+    expect(resolved?.contentSid).toBe('HXflow');
+    expect(resolved?.contentVariables?.['1']).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
   it('falls back to the services list SID when Flow is unset', () => {
