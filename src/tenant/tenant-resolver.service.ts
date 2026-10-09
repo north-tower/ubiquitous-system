@@ -19,6 +19,14 @@ export class TenantResolverService {
     return this.tenantService.findDefault();
   }
 
+  async resolveForTwilioInbound(): Promise<Tenant | null> {
+    const twilioTenant = await this.tenantService.findOldestTwilioPrimary();
+    if (twilioTenant) {
+      return twilioTenant;
+    }
+    return this.tenantService.findDefault();
+  }
+
   async resolveById(id: string): Promise<Tenant | null> {
     if (!id) {
       return null;

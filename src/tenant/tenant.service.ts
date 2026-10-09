@@ -54,6 +54,16 @@ export class TenantService implements OnModuleInit {
     return tenant ?? null;
   }
 
+  /** Oldest tenant created with Twilio as the primary WhatsApp channel. */
+  async findOldestTwilioPrimary(): Promise<Tenant | null> {
+    const [tenant] = await this.tenants.find({
+      where: { primaryChannel: 'twilio' },
+      order: { createdAt: 'ASC' },
+      take: 1,
+    });
+    return tenant ?? null;
+  }
+
   async findById(id: string): Promise<Tenant | null> {
     return this.tenants.findOne({ where: { id } });
   }

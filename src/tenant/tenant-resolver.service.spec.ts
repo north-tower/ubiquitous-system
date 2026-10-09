@@ -6,6 +6,7 @@ describe('TenantResolverService', () => {
   const tenantService = {
     findByWhatsappPhoneNumberId: jest.fn(),
     findDefault: jest.fn(),
+    findOldestTwilioPrimary: jest.fn(),
     findById: jest.fn(),
   };
 
@@ -16,6 +17,7 @@ describe('TenantResolverService', () => {
   beforeEach(() => {
     tenantService.findByWhatsappPhoneNumberId.mockReset();
     tenantService.findDefault.mockReset();
+    tenantService.findOldestTwilioPrimary.mockReset();
     tenantService.findById.mockReset();
   });
 
@@ -45,11 +47,29 @@ describe('TenantResolverService', () => {
     expect(tenantService.findByWhatsappPhoneNumberId).not.toHaveBeenCalled();
   });
 
-  it('resolves the default tenant for Twilio inbound', async () => {
+  it('resolves the oldest tenant as default', async () => {
     const tenant = { id: 'tenant-1', name: 'Techfind Consulting' } as Tenant;
     tenantService.findDefault.mockResolvedValue(tenant);
 
     await expect(resolver.resolveDefault()).resolves.toBe(tenant);
+    expect(tenantService.findDefault).toHaveBeenCalled();
+  });
+
+  it('resolves the Twilio-primary tenant for Twilio inbound', async () => {
+    const tenant = { id: 'tenant-1', name: 'Techfind Consulting' } as Tenant;
+    tenantService.findOldestTwilioPrimary.mockResolvedValue(tenant);
+
+    await expect(resolver.resolveForTwilioInbound()).resolves.toBe(tenant);
+    expect(tenantService.findOldestTwilioPrimary).toHaveBeenCalled();
+    expect(tenantService.findDefault).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the default tenant when no Twilio-primary tenant exists', async () => {
+    const tenant = { id: 'tenant-1', name: 'Techfind Consulting' } as Tenant;
+    tenantService.findOldestTwilioPrimary.mockResolvedValue(null);
+    tenantService.findDefault.mockResolvedValue(tenant);
+
+    await expect(resolver.resolveForTwilioInbound()).resolves.toBe(tenant);
     expect(tenantService.findDefault).toHaveBeenCalled();
   });
 

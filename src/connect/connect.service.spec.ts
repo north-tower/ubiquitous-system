@@ -44,6 +44,7 @@ describe('ConnectService', () => {
       id: 'tenant-9',
       name: 'Divine Budget',
       linkedPhone: null,
+      primaryChannel: 'baileys',
     });
     baileys.whatsappLink.mockReturnValue({
       status: null,
@@ -53,6 +54,7 @@ describe('ConnectService', () => {
     await expect(service.link('secret-token')).resolves.toEqual({
       name: 'Divine Budget',
       flow: 'techfind_demo',
+      primaryChannel: 'baileys',
       status: null,
       linkedPhone: null,
       qrDataUrl: null,
@@ -66,6 +68,7 @@ describe('ConnectService', () => {
       id: 'tenant-9',
       name: 'Divine Budget',
       linkedPhone: null,
+      primaryChannel: 'baileys',
     });
     baileys.beginPairing.mockResolvedValue(undefined);
     baileys.whatsappLink.mockReturnValue({
@@ -76,6 +79,7 @@ describe('ConnectService', () => {
     await expect(service.pair('secret-token')).resolves.toEqual({
       name: 'Divine Budget',
       flow: 'techfind_demo',
+      primaryChannel: 'baileys',
       status: 'waiting_for_scan',
       linkedPhone: null,
       qrDataUrl: 'data:image/png;base64,abc',

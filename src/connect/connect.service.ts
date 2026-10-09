@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DashboardService } from '../dashboard/dashboard.service';
 import {
   type ConversationDetail,
@@ -11,12 +15,14 @@ import {
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { type BaileysSessionStatus } from '../outbound/baileys-session';
 import { Tenant } from '../tenant/tenant.entity';
+import { type TenantPrimaryChannel } from '../tenant/tenant-primary-channel';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantService } from '../tenant/tenant.service';
 
 export type ConnectLink = {
   name: string;
   flow: TenantFlow;
+  primaryChannel: TenantPrimaryChannel | null;
   status: BaileysSessionStatus | null;
   linkedPhone: string | null;
   qrDataUrl: string | null;
@@ -37,12 +43,14 @@ export class ConnectService {
 
   async pair(token: string): Promise<ConnectLink> {
     const tenant = await this.requireTenant(token);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.beginPairing(tenant.id);
     return this.snapshot(tenant);
   }
 
   async stopPair(token: string): Promise<ConnectLink> {
     const tenant = await this.requireTenant(token);
+    this.assertBaileysPrimary(tenant.primaryChannel);
     await this.baileys.endPairing(tenant.id);
     return this.snapshot(tenant);
   }
@@ -75,11 +83,22 @@ export class ConnectService {
     return this.dashboard.getConversation(tenant.id, id);
   }
 
+  private assertBaileysPrimary(
+    primaryChannel: string | null | undefined,
+  ): void {
+    if (primaryChannel === 'twilio') {
+      throw new BadRequestException(
+        'This tenant uses Twilio. QR pairing is only for Baileys tenants.',
+      );
+    }
+  }
+
   private snapshot(tenant: Tenant): ConnectLink {
     const session = this.baileys.whatsappLink(tenant.id);
     return {
       name: tenant.name,
       flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
+      primaryChannel: tenant.primaryChannel,
       status: session.status,
       linkedPhone: tenant.linkedPhone,
       qrDataUrl: session.qrDataUrl,

@@ -15,6 +15,7 @@ describe('WhatsappWebhookService', () => {
   const tenantResolver = {
     resolveByWhatsappPhoneNumberId: jest.fn(),
     resolveDefault: jest.fn(),
+    resolveForTwilioInbound: jest.fn(),
     resolveById: jest.fn(),
   };
   const conversations = {
@@ -63,6 +64,7 @@ describe('WhatsappWebhookService', () => {
   beforeEach(() => {
     tenantResolver.resolveByWhatsappPhoneNumberId.mockReset();
     tenantResolver.resolveDefault.mockReset();
+    tenantResolver.resolveForTwilioInbound.mockReset();
     tenantResolver.resolveById.mockReset();
     conversations.recordInbound.mockReset();
     techfindIntake.handleInbound.mockReset();
@@ -202,7 +204,7 @@ describe('WhatsappWebhookService', () => {
   });
 
   it('replies on Twilio when inbound arrived via Twilio', async () => {
-    tenantResolver.resolveDefault.mockResolvedValue({ id: 'tenant-1' });
+    tenantResolver.resolveForTwilioInbound.mockResolvedValue({ id: 'tenant-1' });
 
     const twilioBody = {
       SmsStatus: 'received',
@@ -232,7 +234,7 @@ describe('WhatsappWebhookService', () => {
   });
 
   it('does not throw when Twilio intake processing fails', async () => {
-    tenantResolver.resolveDefault.mockResolvedValue({ id: 'tenant-1' });
+    tenantResolver.resolveForTwilioInbound.mockResolvedValue({ id: 'tenant-1' });
     techfindIntake.handleInbound.mockRejectedValue(new Error('boom'));
 
     await expect(
@@ -260,7 +262,7 @@ describe('WhatsappWebhookService', () => {
       prospectPhone: '254798229340',
       currentState: ConversationState.NEW,
     };
-    tenantResolver.resolveDefault.mockResolvedValue({
+    tenantResolver.resolveForTwilioInbound.mockResolvedValue({
       id: 'tenant-1',
       flow: 'enquiry_intake',
     });
@@ -293,7 +295,7 @@ describe('WhatsappWebhookService', () => {
       prospectPhone: '254798229340',
       currentState: ConversationState.NEW,
     };
-    tenantResolver.resolveDefault.mockResolvedValue({
+    tenantResolver.resolveForTwilioInbound.mockResolvedValue({
       id: 'tenant-pos',
       flow: 'pos_ops',
     });
@@ -322,7 +324,7 @@ describe('WhatsappWebhookService', () => {
   });
 
   it('forwards an event-type list on the Twilio reply', async () => {
-    tenantResolver.resolveDefault.mockResolvedValue({
+    tenantResolver.resolveForTwilioInbound.mockResolvedValue({
       id: 'tenant-1',
       flow: 'enquiry_intake',
     });

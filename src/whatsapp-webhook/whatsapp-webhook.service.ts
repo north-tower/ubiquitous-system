@@ -112,9 +112,9 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
-    const tenant = await this.tenantResolver.resolveDefault();
+    const tenant = await this.tenantResolver.resolveForTwilioInbound();
     if (!tenant) {
-      this.logger.warn('No default tenant for Twilio inbound');
+      this.logger.warn('No tenant for Twilio inbound');
       return;
     }
 
