@@ -14,6 +14,7 @@ import {
   type DemoAnalyticsRow,
 } from '../dashboard/dashboard.types';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
+import { type TenantPrimaryChannel } from '../tenant/tenant-primary-channel';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantService } from '../tenant/tenant.service';
 import { type PortalPrincipal } from './portal-auth.service';
@@ -28,7 +29,13 @@ export class PortalService {
 
   async whatsapp(principal: PortalPrincipal): Promise<ConnectLink> {
     const tenant = await this.requireTenant(principal.tenantId);
-    return this.snapshot(tenant.id, tenant.name, tenant.flow, tenant.linkedPhone);
+    return this.snapshot(
+      tenant.id,
+      tenant.name,
+      tenant.flow,
+      tenant.primaryChannel,
+      tenant.linkedPhone,
+    );
   }
 
   async pair(principal: PortalPrincipal): Promise<ConnectLink> {
@@ -93,12 +100,14 @@ export class PortalService {
     tenantId: string,
     name: string,
     flow: TenantFlow | null,
+    primaryChannel: TenantPrimaryChannel | null,
     linkedPhone: string | null,
   ): ConnectLink {
     const session = this.baileys.whatsappLink(tenantId);
     return {
       name,
       flow: flow ?? DEFAULT_TENANT_FLOW,
+      primaryChannel,
       status: session.status,
       linkedPhone,
       qrDataUrl: session.qrDataUrl,

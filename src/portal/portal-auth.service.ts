@@ -10,6 +10,7 @@ import { IsNull, Repository } from 'typeorm';
 import { TenantInvitation } from './tenant-invitation.entity';
 import { TenantSession } from './tenant-session.entity';
 import { TenantUser } from './tenant-user.entity';
+import { type TenantPrimaryChannel } from '../tenant/tenant-primary-channel';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
@@ -23,7 +24,11 @@ export type PortalPrincipal = {
 
 export type PortalSessionPayload = {
   token: string;
-  user: PortalPrincipal & { tenantName: string; flow: string };
+  user: PortalPrincipal & {
+    tenantName: string;
+    flow: string;
+    primaryChannel: TenantPrimaryChannel | null;
+  };
 };
 
 function hashToken(token: string): string {
