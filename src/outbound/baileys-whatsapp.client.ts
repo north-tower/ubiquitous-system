@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type Dirent } from 'fs';
-import { readFile, readdir } from 'fs/promises';
+import { readFile, readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { TenantService } from '../tenant/tenant.service';
 import {
@@ -216,6 +216,46 @@ export class BaileysWhatsappClient
     this.pairingUntil.delete(tenantId);
     this.clearPairingTimerIfIdle();
     await this.stopUnpairedSession(tenantId);
+  }
+
+  /** Tear down any live socket and remove saved Baileys auth for this tenant. */
+  async dropTenant(tenantId: string): Promise<void> {
+    this.pairingEpoch.set(tenantId, (this.pairingEpoch.get(tenantId) ?? 0) + 1);
+    this.pairingUntil.delete(tenantId);
+    this.clearPairingTimerIfIdle();
+
+    const session = this.sessions.get(tenantId);
+    if (session) {
+      session.stopped = true;
+      session.qrDataUrl = null;
+      const sock = session.sock;
+      session.sock = null;
+      this.sessions.delete(tenantId);
+      if (sock) {
+        try {
+          await sock.end(undefined);
+        } catch (error) {
+          this.logger.warn(
+            `Failed to close WhatsApp session tenant=${tenantId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+    }
+
+    const dir = this.authDir(tenantId);
+    try {
+      await rm(dir, { recursive: true, force: true });
+    } catch (error) {
+      if (!isEnoent(error)) {
+        this.logger.warn(
+          `Failed to remove Baileys auth tenant=${tenantId} dir=${dir}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 
   async onModuleInit(): Promise<void> {

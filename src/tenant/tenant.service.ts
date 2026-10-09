@@ -68,6 +68,11 @@ export class TenantService implements OnModuleInit {
     return this.tenants.findOne({ where: { id } });
   }
 
+  async deleteById(id: string): Promise<boolean> {
+    const result = await this.tenants.delete({ id });
+    return (result.affected ?? 0) > 0;
+  }
+
   async findByConnectToken(token: string): Promise<Tenant | null> {
     const trimmed = token.trim();
     if (!trimmed) {

@@ -10,10 +10,12 @@ describe('DashboardTenantService', () => {
     createStaffTenant: jest.fn(),
     list: jest.fn(),
     findById: jest.fn(),
+    deleteById: jest.fn(),
   };
   const baileys = {
     beginPairing: jest.fn(),
     endPairing: jest.fn(),
+    dropTenant: jest.fn(),
     connectionStatus: jest.fn(),
     whatsappLink: jest.fn(),
   };
@@ -32,8 +34,10 @@ describe('DashboardTenantService', () => {
     tenants.createStaffTenant.mockReset();
     tenants.list.mockReset();
     tenants.findById.mockReset();
+    tenants.deleteById.mockReset();
     baileys.beginPairing.mockReset();
     baileys.endPairing.mockReset();
+    baileys.dropTenant.mockReset();
     baileys.connectionStatus.mockReset();
     baileys.whatsappLink.mockReset();
     onboarding.inviteOwnerForTenant.mockReset();
@@ -179,5 +183,30 @@ describe('DashboardTenantService', () => {
     await expect(service.whatsapp('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('drops Baileys auth and deletes a Baileys-primary tenant', async () => {
+    tenants.findById.mockResolvedValue({
+      id: 'tenant-9',
+      primaryChannel: 'baileys',
+    } as Tenant);
+    tenants.deleteById.mockResolvedValue(true);
+    baileys.dropTenant.mockResolvedValue(undefined);
+
+    await expect(service.delete('tenant-9')).resolves.toEqual({ ok: true });
+    expect(baileys.dropTenant).toHaveBeenCalledWith('tenant-9');
+    expect(tenants.deleteById).toHaveBeenCalledWith('tenant-9');
+  });
+
+  it('skips Baileys cleanup for Twilio-primary tenants', async () => {
+    tenants.findById.mockResolvedValue({
+      id: 'tenant-9',
+      primaryChannel: 'twilio',
+    } as Tenant);
+    tenants.deleteById.mockResolvedValue(true);
+
+    await expect(service.delete('tenant-9')).resolves.toEqual({ ok: true });
+    expect(baileys.dropTenant).not.toHaveBeenCalled();
+    expect(tenants.deleteById).toHaveBeenCalledWith('tenant-9');
   });
 });

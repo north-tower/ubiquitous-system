@@ -95,6 +95,18 @@ export class DashboardTenantService {
     return this.whatsapp(id);
   }
 
+  async delete(id: string): Promise<{ ok: true }> {
+    const tenant = await this.requireTenant(id);
+    if (tenant.primaryChannel !== 'twilio') {
+      await this.baileys.dropTenant(id);
+    }
+    const removed = await this.tenants.deleteById(id);
+    if (!removed) {
+      throw new NotFoundException('Unknown tenant');
+    }
+    return { ok: true };
+  }
+
   async list(): Promise<DashboardTenantSummary[]> {
     const rows = await this.tenants.list();
     const summaries: DashboardTenantSummary[] = [];

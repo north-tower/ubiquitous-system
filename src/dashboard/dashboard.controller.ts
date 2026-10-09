@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -63,6 +64,11 @@ export class DashboardController {
   ): Promise<NonNullable<CreateTenantResult['onboarding']>> {
     const appUrl = typeof body?.appUrl === 'string' ? body.appUrl : undefined;
     return this.tenantLinks.resendOnboarding(id, appUrl);
+  }
+
+  @Delete('tenants/:id')
+  deleteTenant(@Param('id') id: string): Promise<{ ok: true }> {
+    return this.tenantLinks.delete(id);
   }
 
   @Get('tenants')
