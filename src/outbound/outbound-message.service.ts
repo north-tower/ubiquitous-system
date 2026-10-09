@@ -63,6 +63,14 @@ export class OutboundMessageService {
       this.logger.log(
         `Twilio content attempt conversation=${job.conversationId} template=${job.twilioContent} sid=${maskContentSid(contentSend.contentSid)} sidSource=${contentSend.trace.sidSource} sidEnv=${contentSend.trace.sidEnvVar} flowSidConfigured=${contentSend.trace.servicesFlowSidConfigured} listSidConfigured=${contentSend.trace.servicesListSidConfigured} sendFlowToken=${contentSend.trace.sendFlowTokenEnabled} outboundVarCount=${varSummary.count} inboundVarKeys=${contentSend.trace.inboundVariableKeys.join(',') || 'none'}`,
       );
+      if (
+        job.twilioContent === 'services' &&
+        contentSend.trace.sidSource === 'services_list'
+      ) {
+        this.logger.warn(
+          `Services step is not using the Flow template: set TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID in the API environment (docker .env) and restart. Currently sending list SID ${maskContentSid(contentSend.contentSid)} with ContentVariables — if the list template has no {{1}}, Twilio returns 21656.`,
+        );
+      }
       if (isTwilioContentSendDebug(this.config)) {
         this.logger.debug(
           `Twilio content trace conversation=${job.conversationId} ${JSON.stringify(contentSend.trace)} preview=${JSON.stringify(previewContentVariables(contentSend.contentVariables))} jobPreview=${JSON.stringify(previewContentVariables(job.twilioContentVariables))}`,
