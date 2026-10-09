@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { EnquiryTwilioContentKey } from '../enquiry-flow/enquiry-twilio-reply';
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
-import { resolveEnquiryTwilioContentSid } from './enquiry-twilio-content-sid';
+import { resolveEnquiryTwilioContentForSend } from './resolve-enquiry-twilio-content-send';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -106,17 +106,10 @@ export class OutboundMessageService {
     if (!job.twilioContent || job.channel === 'meta' || job.channel === 'baileys') {
       return null;
     }
-    const contentSid = resolveEnquiryTwilioContentSid(
-      this.config,
-      job.twilioContent,
-    );
-    if (!contentSid) {
-      return null;
-    }
-    return {
-      contentSid,
-      contentVariables: job.twilioContentVariables,
-    };
+    return resolveEnquiryTwilioContentForSend(this.config, job.twilioContent, {
+      twilioContentVariables: job.twilioContentVariables,
+      text: job.text,
+    });
   }
 
   private async resolveSendChannel(

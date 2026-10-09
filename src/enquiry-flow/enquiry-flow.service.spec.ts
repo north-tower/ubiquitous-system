@@ -155,6 +155,15 @@ describe('EnquiryFlowService', () => {
     expect(afterVenue.twilioContent).toBe('budget');
   });
 
+  it('accepts Flow multi-select service ids on one inbound', async () => {
+    await say('hi');
+    await say('corporate');
+    await say('20th December');
+    await expect(
+      say('sound_pa, lighting'),
+    ).resolves.toMatch(/how many guests/i);
+  });
+
   it('walks the enquiry conversation and files it on confirm', async () => {
     await expect(say('hi')).resolves.toMatch(/Divine Budgets/);
     await expect(say('Wedding')).resolves.toMatch(/When is it/i);

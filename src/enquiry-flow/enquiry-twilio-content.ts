@@ -44,7 +44,7 @@ export const TWILIO_ENQUIRY_CONTENT_ENV = {
   returningChoice: 'TWILIO_ENQUIRY_RETURNING_CONTENT_SID',
   /** In-session list-picker (multi-select still via typed numbers in copy). */
   services: 'TWILIO_ENQUIRY_SERVICES_CONTENT_SID',
-  /** WhatsApp Flow (CheckboxGroup) — optional future; not wired in outbound yet. */
+  /** WhatsApp / Twilio Flow (MULTI_SELECT); preferred over list when SID is set. */
   servicesFlow: 'TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID',
   budget: 'TWILIO_ENQUIRY_BUDGET_CONTENT_SID',
   budgetConfirm: 'TWILIO_ENQUIRY_BUDGET_CONFIRM_CONTENT_SID',
@@ -99,16 +99,16 @@ export const ENQUIRY_TWILIO_CONTENT_BY_STEP: Record<
   },
   [ENQUIRY_STEPS.AWAITING_SERVICES]: {
     step: ENQUIRY_STEPS.AWAITING_SERVICES,
-    label: 'Services needed (list + typed multi-select)',
-    kind: 'list-picker',
+    label: 'Services needed (Flow multi-select or list fallback)',
+    kind: 'whatsapp-flow',
     rationale:
-      'List-picker for tappable rows; customers can still type *1, 2* or names for multi-select. Optional later: whatsapp-flow CheckboxGroup.',
+      'TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID → MULTI_SELECT Flow; else list-picker or typed *1, 2* / names.',
     choiceCount: 5,
     optionSource: 'SERVICE_OPTIONS',
-    envVar: TWILIO_ENQUIRY_CONTENT_ENV.services,
+    envVar: TWILIO_ENQUIRY_CONTENT_ENV.servicesFlow,
     implemented: true,
     inboundHint:
-      'ListId = SERVICE_OPTIONS id (single pick); Body can still carry comma-separated numbers or labels.',
+      'InteractiveData / FlowData → parse-services-flow-response; option ids = SERVICE_OPTIONS ids.',
   },
   [ENQUIRY_STEPS.AWAITING_GUESTS]: {
     step: ENQUIRY_STEPS.AWAITING_GUESTS,

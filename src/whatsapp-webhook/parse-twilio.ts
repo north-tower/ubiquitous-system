@@ -38,8 +38,21 @@ function toDigits(phone: string): string {
   return phone.replace(/[^\d]/g, '');
 }
 
-/** List-picker row id, quick-reply ButtonPayload, or Body (in that order). */
+import { parseServicesFlowInbound } from '../enquiry-flow/parse-services-flow-response';
+
+/** Flow submission, list-picker row id, quick-reply ButtonPayload, or Body. */
 function readTwilioInboundChoice(fields: Record<string, string>): string | null {
+  for (const key of ['InteractiveData', 'FlowData'] as const) {
+    const raw = fields[key]?.trim();
+    if (!raw) {
+      continue;
+    }
+    const services = parseServicesFlowInbound(raw);
+    if (services) {
+      return services;
+    }
+  }
+
   const listId = fields.ListId?.trim();
   if (listId) {
     return listId;

@@ -50,6 +50,23 @@ describe('parseTwilioWebhook', () => {
     });
   });
 
+  it('maps Flow MULTI_SELECT submissions to comma-separated service ids', () => {
+    expect(
+      parseTwilioWebhook({
+        ...SAMPLE_TWILIO_TEXT_WEBHOOK,
+        Body: 'Sent',
+        InteractiveData: JSON.stringify({
+          flowResponse: {
+            flow_token: 'abc',
+            screen_0_services_0: ['sound_pa', 'lighting'],
+          },
+        }),
+      }),
+    ).toMatchObject({
+      text: 'sound_pa, lighting',
+    });
+  });
+
   it('uses the list row id when the customer taps a choice', () => {
     expect(
       parseTwilioWebhook({

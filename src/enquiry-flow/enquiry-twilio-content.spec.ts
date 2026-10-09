@@ -26,7 +26,8 @@ describe('ENQUIRY_TWILIO_CONTENT_BY_STEP', () => {
       ]),
     );
     expect(
-      ENQUIRY_TWILIO_CONTENT_BY_STEP[ENQUIRY_STEPS.AWAITING_SERVICES].kind,
-    ).toBe('list-picker');
+      ENQUIRY_TWILIO_CONTENT_BY_STEP[ENQUIRY_STEPS.AWAITING_SERVICES]
+        .implemented,
+    ).toBe(true);
   });
 });

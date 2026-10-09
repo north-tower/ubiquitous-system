@@ -90,6 +90,34 @@ describe('OutboundMessageService enquiry Twilio content', () => {
     });
   });
 
+  it('sends the services Flow template when Flow SID is configured', async () => {
+    config.get.mockImplementation((key: string) => {
+      if (key === 'NODE_ENV') {
+        return 'development';
+      }
+      if (key === 'TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID') {
+        return 'HXflow';
+      }
+      return undefined;
+    });
+
+    await createService().sendText({
+      conversationId: 'c1',
+      to: '254711111111',
+      text: 'What would you like us to handle?',
+      channel: 'twilio',
+      twilioContent: 'services',
+    });
+
+    expect(router.sendContent).toHaveBeenCalledWith(
+      '254711111111',
+      'HXflow',
+      expect.objectContaining({
+        '1': expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      }),
+    );
+  });
+
   it('falls back to text on baileys even when twilioContent is set', async () => {
     await createService().sendText({
       conversationId: 'c1',

@@ -42,7 +42,10 @@ export function twilioListPickerVariables(
   replyText: string,
 ): Record<string, string> | undefined {
   const spec = ENQUIRY_TWILIO_CONTENT_BY_STEP[step];
-  if (spec?.kind !== 'list-picker') {
+  const listPicker =
+    spec?.kind === 'list-picker' ||
+    step === ENQUIRY_STEPS.AWAITING_SERVICES;
+  if (!listPicker) {
     return undefined;
   }
   const line = replyText
