@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
 import { OutboundMessageService } from './outbound-message.service';
+import { TwilioSendError } from './twilio-whatsapp.client';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
 describe('OutboundMessageService enquiry Twilio content', () => {
@@ -114,6 +115,104 @@ describe('OutboundMessageService enquiry Twilio content', () => {
       'HXflow',
       undefined,
     );
+  });
+
+  it('retries services Flow content with flow_token after Twilio 21656 and no vars', async () => {
+    config.get.mockImplementation((key: string) => {
+      if (key === 'NODE_ENV') {
+        return 'development';
+      }
+      if (key === 'TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID') {
+        return 'HXflow';
+      }
+      return undefined;
+    });
+    router.sendContent
+      .mockRejectedValueOnce(
+        new TwilioSendError(
+          400,
+          JSON.stringify({
+            code: 21656,
+            message: 'The Content Variables parameter is invalid.',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce({
+        channel: 'twilio',
+        messageId: 'SM4',
+        raw: {},
+      });
+
+    await createService().sendText({
+      conversationId: 'c1',
+      to: '254711111111',
+      text: 'What would you like us to handle?',
+      channel: 'twilio',
+      twilioContent: 'services',
+    });
+
+    expect(router.sendContent).toHaveBeenNthCalledWith(
+      1,
+      '254711111111',
+      'HXflow',
+      undefined,
+    );
+    expect(router.sendContent).toHaveBeenNthCalledWith(
+      2,
+      '254711111111',
+      'HXflow',
+      expect.objectContaining({
+        '1': expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      }),
+    );
+    expect(router.sendText).not.toHaveBeenCalled();
+  });
+
+  it('retries services list content without variables after Twilio 21656', async () => {
+    config.get.mockImplementation((key: string) => {
+      if (key === 'NODE_ENV') {
+        return 'development';
+      }
+      if (key === 'TWILIO_ENQUIRY_SERVICES_CONTENT_SID') {
+        return 'HXlist';
+      }
+      return undefined;
+    });
+    router.sendContent
+      .mockRejectedValueOnce(
+        new TwilioSendError(
+          400,
+          JSON.stringify({
+            code: 21656,
+            message: 'The Content Variables parameter is invalid.',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce({
+        channel: 'twilio',
+        messageId: 'SM3',
+        raw: {},
+      });
+
+    await createService().sendText({
+      conversationId: 'c1',
+      to: '254711111111',
+      text: 'What would you like us to handle?',
+      channel: 'twilio',
+      twilioContent: 'services',
+      twilioContentVariables: { '1': 'What would you like us to handle?' },
+    });
+
+    expect(router.sendContent).toHaveBeenNthCalledWith(1, '254711111111', 'HXlist', {
+      '1': 'What would you like us to handle?',
+    });
+    expect(router.sendContent).toHaveBeenNthCalledWith(
+      2,
+      '254711111111',
+      'HXlist',
+      undefined,
+    );
+    expect(router.sendText).not.toHaveBeenCalled();
   });
 
   it('falls back to text on baileys even when twilioContent is set', async () => {

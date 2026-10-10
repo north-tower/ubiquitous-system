@@ -27,6 +27,19 @@ export class TwilioSendError extends Error {
   }
 }
 
+/** Parses Twilio REST error `code` from a TwilioSendError body (JSON string). */
+export function twilioSendErrorCode(error: unknown): number | null {
+  if (!(error instanceof TwilioSendError)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(error.body) as { code?: unknown };
+    return typeof parsed.code === 'number' ? parsed.code : null;
+  } catch {
+    return null;
+  }
+}
+
 @Injectable()
 export class TwilioWhatsappClient implements WhatsappSender {
   readonly channel = 'twilio' as const;

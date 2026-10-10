@@ -3,14 +3,20 @@ import { ConfigService } from '@nestjs/config';
 import type { EnquiryTwilioContentKey } from '../enquiry-flow/enquiry-twilio-reply';
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
-import { resolveEnquiryTwilioContentForSend } from './resolve-enquiry-twilio-content-send';
+import {
+  createServicesFlowTokenVariables,
+  resolveEnquiryTwilioContentForSend,
+} from './resolve-enquiry-twilio-content-send';
 import {
   isTwilioContentSendDebug,
   maskContentSid,
   previewContentVariables,
   summarizeContentVariables,
 } from './twilio-content-send-debug';
-import { TwilioSendError } from './twilio-whatsapp.client';
+import {
+  TwilioSendError,
+  twilioSendErrorCode,
+} from './twilio-whatsapp.client';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -77,24 +83,23 @@ export class OutboundMessageService {
         );
       }
       try {
-        const { channel, messageId, raw } = await this.router.sendContent(
-          job.to,
-          contentSend.contentSid,
-          contentSend.contentVariables,
+        const sent = await this.sendTwilioContentWithServices21656Retry(
+          job,
+          contentSend,
         );
         await this.conversations.recordOutbound({
           conversationId: job.conversationId,
           text: job.text,
           rawPayload: {
-            channel,
-            messageId,
+            channel: sent.channel,
+            messageId: sent.messageId,
             contentSid: contentSend.contentSid,
-            contentVariables: contentSend.contentVariables ?? null,
-            response: raw,
+            contentVariables: sent.contentVariables ?? null,
+            response: sent.raw,
           },
         });
         this.logger.log(
-          `Sent WhatsApp content conversation=${job.conversationId} to=${job.to} channel=${channel} template=${job.twilioContent}`,
+          `Sent WhatsApp content conversation=${job.conversationId} to=${job.to} channel=${sent.channel} template=${job.twilioContent}`,
         );
         return;
       } catch (error) {
@@ -123,6 +128,57 @@ export class OutboundMessageService {
     this.logger.log(
       `Sent WhatsApp text conversation=${job.conversationId} to=${job.to} channel=${usedChannel}`,
     );
+  }
+
+  /**
+   * Twilio 21656: variable count/value mismatch. Retry once with the opposite shape
+   * for services list (strip {{1}}) or Flow (add flow_token {{1}}).
+   */
+  private async sendTwilioContentWithServices21656Retry(
+    job: OutboundTextJob,
+    contentSend: NonNullable<ReturnType<OutboundMessageService['resolveTwilioContentSend']>>,
+  ): Promise<{
+    channel: Awaited<ReturnType<WhatsappSendRouter['sendContent']>>['channel'];
+    messageId: string | null;
+    raw: unknown;
+    contentVariables?: Record<string, string>;
+  }> {
+    const trySend = (contentVariables?: Record<string, string>) =>
+      this.router.sendContent(job.to, contentSend.contentSid, contentVariables);
+
+    try {
+      const result = await trySend(contentSend.contentVariables);
+      return { ...result, contentVariables: contentSend.contentVariables };
+    } catch (error) {
+      const hadVariables =
+        summarizeContentVariables(contentSend.contentVariables).count > 0;
+      const isInvalidVariables = twilioSendErrorCode(error) === 21656;
+      if (job.twilioContent !== 'services' || !isInvalidVariables) {
+        throw error;
+      }
+      if (
+        contentSend.trace.sidSource === 'services_list' &&
+        hadVariables
+      ) {
+        this.logger.warn(
+          `Twilio 21656 on services list template ${maskContentSid(contentSend.contentSid)} — retrying without ContentVariables (static list body). Set TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID for multi-select Flow, or TWILIO_ENQUIRY_SERVICES_LIST_SEND_BODY_VARIABLE=false to skip {{1}} on first attempt.`,
+        );
+        const result = await trySend(undefined);
+        return { ...result, contentVariables: undefined };
+      }
+      if (
+        contentSend.trace.sidSource === 'services_flow' &&
+        !hadVariables
+      ) {
+        const flowVars = createServicesFlowTokenVariables();
+        this.logger.warn(
+          `Twilio 21656 on services Flow template ${maskContentSid(contentSend.contentSid)} with no ContentVariables — retrying with flow_token variable {{1}}. Set TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN=true to send a token on the first attempt. If this still fails, submit the template for WhatsApp approval and confirm the HX SID belongs to the same Twilio account as TWILIO_ACCOUNT_SID.`,
+        );
+        const result = await trySend(flowVars);
+        return { ...result, contentVariables: flowVars };
+      }
+      throw error;
+    }
   }
 
   private resolveTwilioContentSend(job: OutboundTextJob) {

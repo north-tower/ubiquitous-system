@@ -23,9 +23,20 @@ Typed replies still work: `1, 2`, `sound and lighting`, etc.
 3. Add a **Footer** submit button.
 4. Copy the template **Content SID** (`HX…`) → `TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID`.
 
-For static `twilio/flows` templates (no `{{1}}` in the builder), the API sends **no** `ContentVariables`. If Twilio returns error **21656**, remove any stray variables from the send path or ensure the template has no unused placeholders.
+For static `twilio/flows` templates (no `{{1}}` in the builder), the API sends **no** `ContentVariables` on the first attempt.
 
-For `whatsapp/flows` with `flow_token: "{{1}}"`, set `TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN=true` so the app sends a unique token in variable `1`.
+For `whatsapp/flows` with `flow_token: "{{1}}"`, set `TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN=true` so the app sends a unique token in variable `1` on every send (recommended if Twilio shows a **Variables** sample for the template).
+
+**Submit for WhatsApp approval** — `twilio/flows` must be approved before Meta publishes the Flow to your WABA. While status is *Not Submitted*, sends often fail.
+
+### 21656 with `services_flow` and `contentVariablesJson: null`
+
+Twilio requires the number of **ContentVariables** to match placeholders registered on the template. If the template (or its `variables` block) expects `{{1}}` but the API sends none, you get 21656 even with a static-looking body in the console.
+
+1. Set `TWILIO_ENQUIRY_SERVICES_FLOW_SEND_FLOW_TOKEN=true` and restart the API.
+2. Or remove unused variables / broken `{{}}` placeholders in Content Template Builder and re-save.
+3. Confirm the `HX…` SID is in the **same** Twilio account as `TWILIO_ACCOUNT_SID`.
+4. Submit the template for WhatsApp approval and wait until approved.
 
 ## Option B — `whatsapp/flows` (Meta Flow + Content API)
 
@@ -56,5 +67,7 @@ Set `TWILIO_CONTENT_SEND_DEBUG=true` and restart the API. On each content send y
 - On failure, `trace=…` and `twilioRequest=…` (whether `contentVariablesJson` was null).
 
 If `sidSource=services_list` but you expected Flow, the container does not have `TWILIO_ENQUIRY_SERVICES_FLOW_CONTENT_SID` (rebuild/restart after env changes).
+
+For **list fallback** (`TWILIO_ENQUIRY_SERVICES_CONTENT_SID`): either put `{{1}}` in the list body (dynamic prompt from the bot), or use a static body and set `TWILIO_ENQUIRY_SERVICES_LIST_SEND_BODY_VARIABLE=false`. The API also retries once **without** variables after 21656 on the services list path.
 
 Tests: `pnpm test -- parse-services-flow-response parse-twilio resolve-enquiry-twilio-content-send`

@@ -94,10 +94,14 @@ export function resolveEnquiryTwilioContentForSend(
   }
   const sidSource: EnquiryTwilioContentSidSource =
     key === 'services' ? 'services_list' : 'env';
-  const outboundVariableKeys = Object.keys(input.twilioContentVariables ?? {});
+  const contentVariables =
+    key === 'services' && !servicesListSendBodyVariable(config)
+      ? undefined
+      : input.twilioContentVariables;
+  const outboundVariableKeys = Object.keys(contentVariables ?? {});
   return {
     contentSid,
-    contentVariables: input.twilioContentVariables,
+    contentVariables,
     trace: {
       contentKey: key,
       sidSource,
@@ -120,6 +124,21 @@ function servicesFlowSendFlowToken(config: ConfigService): boolean {
   return raw === '1' || raw === 'true' || raw === 'yes';
 }
 
+/**
+ * When false, list fallback sends no {{1}} (static list-picker body in Twilio).
+ * Default true so dynamic body text in copy maps to template {{1}}.
+ */
+function servicesListSendBodyVariable(config: ConfigService): boolean {
+  const raw = config
+    .get<string>('TWILIO_ENQUIRY_SERVICES_LIST_SEND_BODY_VARIABLE')
+    ?.trim()
+    .toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'no') {
+    return false;
+  }
+  return true;
+}
+
 /** whatsapp/flows templates often bind flow_token to {{1}}. */
 function flowContentVariables(
   existing: Record<string, string> | undefined,
@@ -128,4 +147,9 @@ function flowContentVariables(
     return { ...existing };
   }
   return { ...existing, '1': randomUUID() };
+}
+
+/** Unique flow_token for Twilio variable `1` (export for 21656 retry). */
+export function createServicesFlowTokenVariables(): Record<string, string> {
+  return flowContentVariables(undefined);
 }

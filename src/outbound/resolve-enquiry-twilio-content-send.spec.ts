@@ -43,6 +43,27 @@ describe('resolveEnquiryTwilioContentForSend', () => {
     expect(resolved?.contentVariables?.['1']).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
+  it('omits list body {{1}} when TWILIO_ENQUIRY_SERVICES_LIST_SEND_BODY_VARIABLE is false', () => {
+    const config = {
+      get: (key: string) => {
+        if (key === 'TWILIO_ENQUIRY_SERVICES_CONTENT_SID') {
+          return 'HXlist';
+        }
+        if (key === 'TWILIO_ENQUIRY_SERVICES_LIST_SEND_BODY_VARIABLE') {
+          return 'false';
+        }
+        return undefined;
+      },
+    } as unknown as ConfigService;
+
+    const resolved = resolveEnquiryTwilioContentForSend(config, 'services', {
+      text: 'Pick services',
+      twilioContentVariables: { '1': 'Question line' },
+    });
+    expect(resolved?.contentVariables).toBeUndefined();
+    expect(resolved?.trace.outboundVariableKeys).toEqual([]);
+  });
+
   it('falls back to the services list SID when Flow is unset', () => {
     const config = {
       get: (key: string) => {
