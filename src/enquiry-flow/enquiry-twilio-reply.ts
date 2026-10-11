@@ -1,3 +1,7 @@
+import {
+  enquiryBaileysListForStep,
+  type BaileysListMessageSpec,
+} from './enquiry-baileys-interactive';
 import { confirmationPlayback, formatSummary } from './enquiry-copy';
 import type { EnquiryPayload } from './enquiry-payload';
 import { ENQUIRY_STEPS, type EnquiryStep } from './enquiry-steps';
@@ -28,6 +32,8 @@ export type EnquiryReply = {
   twilioContent?: EnquiryTwilioContentKey;
   /** Twilio ContentVariables JSON keys (e.g. "1" for {{1}} in confirm templates). */
   twilioContentVariables?: Record<string, string>;
+  /** Baileys-only interactive outbound (Twilio uses twilioContent). */
+  baileysList?: BaileysListMessageSpec;
 };
 
 export function enquiryTwilioContentEnvVar(
@@ -62,15 +68,17 @@ export function enquiryReplyForStep(
   step: EnquiryStep,
   replyText: string,
 ): EnquiryReply {
+  const baileysList = enquiryBaileysListForStep(step, replyText);
   const twilioContent = ENQUIRY_STEP_TWILIO_CONTENT[step];
   if (!twilioContent) {
-    return { replyText };
+    return { replyText, ...(baileysList ? { baileysList } : {}) };
   }
   const twilioContentVariables = twilioListPickerVariables(step, replyText);
   return {
     replyText,
     twilioContent,
     ...(twilioContentVariables ? { twilioContentVariables } : {}),
+    ...(baileysList ? { baileysList } : {}),
   };
 }
 

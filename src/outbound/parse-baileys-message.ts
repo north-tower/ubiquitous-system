@@ -15,6 +15,12 @@ export type BaileysInboundMessage = {
   message?: {
     conversation?: string | null;
     extendedTextMessage?: { text?: string | null } | null;
+    listResponseMessage?: {
+      singleSelectReply?: {
+        selectedRowId?: string | null;
+        title?: string | null;
+      } | null;
+    } | null;
   } | null;
 };
 
@@ -40,11 +46,7 @@ export function parseBaileysTextMessage(
     return null;
   }
 
-  const text = (
-    message.message.conversation ??
-    message.message.extendedTextMessage?.text ??
-    ''
-  ).trim();
+  const text = readInboundText(message.message).trim();
   if (!text) {
     return null;
   }
@@ -69,6 +71,25 @@ export function parseBaileysTextMessage(
   }
 
   return null;
+}
+
+function readInboundText(message: NonNullable<BaileysInboundMessage['message']>): string {
+  const listRowId =
+    message.listResponseMessage?.singleSelectReply?.selectedRowId?.trim() ??
+    '';
+  if (listRowId) {
+    return listRowId;
+  }
+  const listTitle =
+    message.listResponseMessage?.singleSelectReply?.title?.trim() ?? '';
+  if (listTitle) {
+    return listTitle;
+  }
+  return (
+    message.conversation ??
+    message.extendedTextMessage?.text ??
+    ''
+  );
 }
 
 function phoneJidFrom(

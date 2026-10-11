@@ -79,6 +79,26 @@ describe('parseBaileysTextMessage', () => {
     });
   });
 
+  it('maps a list row selection to the row id for the FSM', () => {
+    expect(
+      parseBaileysTextMessage({
+        key: { remoteJid: '254711111111@s.whatsapp.net', fromMe: false },
+        message: {
+          listResponseMessage: {
+            singleSelectReply: {
+              selectedRowId: 'wedding',
+              title: 'Wedding',
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      phoneNumber: '254711111111',
+      text: 'wedding',
+      jid: '254711111111@s.whatsapp.net',
+    });
+  });
+
   it('uses participantAlt when the chat id is a lid', () => {
     expect(
       parseBaileysTextMessage({

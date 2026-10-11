@@ -16,6 +16,16 @@ describe('enquiryReplyForStep', () => {
     });
   });
 
+  it('attaches a Baileys list spec on the event-type step', () => {
+    const reply = enquiryReplyForStep(
+      ENQUIRY_STEPS.AWAITING_EVENT_TYPE,
+      'What are you planning? (1 of 6)\n1  Wedding',
+    );
+    expect(reply.twilioContent).toBe('eventType');
+    expect(reply.baileysList?.buttonText).toBe('Choose event type');
+    expect(reply.baileysList?.sections[0].rows[0].rowId).toBe('wedding');
+  });
+
   it('strips markdown emphasis from list-picker variables', () => {
     expect(
       twilioListPickerVariables(

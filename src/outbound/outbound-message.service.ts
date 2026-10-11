@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import type { EnquiryTwilioContentKey } from '../enquiry-flow/enquiry-twilio-reply';
 import { ConversationService } from '../conversation/conversation.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -30,6 +31,7 @@ export type OutboundTextJob = {
   /** Twilio Content template for enquiry_intake (Twilio channel only). */
   twilioContent?: EnquiryTwilioContentKey;
   twilioContentVariables?: Record<string, string>;
+  baileysList?: BaileysListMessageSpec;
 };
 
 @Injectable()
@@ -63,6 +65,10 @@ export class OutboundMessageService {
       );
       return;
     }
+    if (await this.trySendBaileysList(job)) {
+      return;
+    }
+
     const contentSend = this.resolveTwilioContentSend(job);
     if (contentSend) {
       const varSummary = summarizeContentVariables(contentSend.contentVariables);
@@ -178,6 +184,48 @@ export class OutboundMessageService {
         return { ...result, contentVariables: flowVars };
       }
       throw error;
+    }
+  }
+
+  private baileysEnquiryInteractiveEnabled(): boolean {
+    return this.config.get<string>('BAILEYS_ENQUIRY_INTERACTIVE') !== 'false';
+  }
+
+  private async trySendBaileysList(job: OutboundTextJob): Promise<boolean> {
+    if (
+      job.channel !== 'baileys' ||
+      !job.baileysList ||
+      !this.baileysEnquiryInteractiveEnabled()
+    ) {
+      return false;
+    }
+    try {
+      const sent = await this.router.sendBaileysList(
+        job.to,
+        job.baileysList,
+        job.tenantId,
+      );
+      await this.conversations.recordOutbound({
+        conversationId: job.conversationId,
+        text: job.text,
+        rawPayload: {
+          channel: sent.channel,
+          messageId: sent.messageId,
+          baileysList: job.baileysList,
+          response: sent.raw,
+        },
+      });
+      this.logger.log(
+        `Sent Baileys list conversation=${job.conversationId} to=${job.to}`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Baileys list send failed, falling back to text conversation=${job.conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
     }
   }
 

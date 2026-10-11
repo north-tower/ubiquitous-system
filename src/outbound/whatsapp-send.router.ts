@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
@@ -60,6 +61,18 @@ export class WhatsappSendRouter {
     throw lastError instanceof Error
       ? lastError
       : new Error('WhatsApp send failed');
+  }
+
+  async sendBaileysList(
+    to: string,
+    list: BaileysListMessageSpec,
+    tenantId?: string,
+  ): Promise<WhatsappSendResult> {
+    if (!this.baileys.isConfigured()) {
+      throw new Error('Baileys is not configured.');
+    }
+    const result = await this.baileys.sendList(to, list, tenantId);
+    return { channel: 'baileys', ...result };
   }
 
   async sendContent(

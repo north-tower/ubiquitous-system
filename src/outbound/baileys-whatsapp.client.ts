@@ -25,6 +25,10 @@ import {
   phoneDigitsFromJid,
 } from './baileys-lid';
 import {
+  toBaileysListSendContent,
+  type BaileysSendListPayload,
+} from './baileys-list-send';
+import {
   parseBaileysTextMessage,
   type BaileysInboundMessage,
 } from './parse-baileys-message';
@@ -67,7 +71,7 @@ type BaileysSocket = {
   };
   sendMessage(
     jid: string,
-    content: { text: string },
+    content: Record<string, unknown>,
   ): Promise<{ key?: { id?: string | null } | null } | undefined>;
   onWhatsApp(
     ...phones: string[]
@@ -305,6 +309,25 @@ export class BaileysWhatsappClient
 
     const jid = await this.resolveJid(session, sock, to);
     const sent = await sock.sendMessage(jid, { text: body });
+    return { messageId: sent?.key?.id ?? null, raw: sent ?? null };
+  }
+
+  async sendList(
+    to: string,
+    list: BaileysSendListPayload,
+    tenantId?: string,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    const id = tenantId ?? this.defaultTenantId;
+    const session = id ? this.sessions.get(id) : undefined;
+    const sock = session?.sock;
+    if (!session || !sock) {
+      throw new Error(
+        `Baileys WhatsApp socket is not connected${id ? ` for tenant ${id}` : ''}`,
+      );
+    }
+
+    const jid = await this.resolveJid(session, sock, to);
+    const sent = await sock.sendMessage(jid, toBaileysListSendContent(list));
     return { messageId: sent?.key?.id ?? null, raw: sent ?? null };
   }
 

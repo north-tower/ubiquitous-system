@@ -10,6 +10,7 @@ describe('OutboundMessageService enquiry Twilio content', () => {
   const router = {
     sendContent: jest.fn(),
     sendText: jest.fn(),
+    sendBaileysList: jest.fn(),
   };
   const conversations = { recordOutbound: jest.fn() };
   const tenants = { findById: jest.fn() };
@@ -18,6 +19,7 @@ describe('OutboundMessageService enquiry Twilio content', () => {
     config.get.mockReset();
     router.sendContent.mockReset();
     router.sendText.mockReset();
+    router.sendBaileysList.mockReset();
     conversations.recordOutbound.mockReset();
     config.get.mockImplementation((key: string) => {
       if (key === 'NODE_ENV') {
@@ -226,5 +228,33 @@ describe('OutboundMessageService enquiry Twilio content', () => {
 
     expect(router.sendContent).not.toHaveBeenCalled();
     expect(router.sendText).toHaveBeenCalled();
+  });
+
+  it('sends a Baileys list for enquiry event type when configured', async () => {
+    router.sendBaileysList.mockResolvedValue({
+      channel: 'baileys',
+      messageId: 'BA-list',
+      raw: {},
+    });
+
+    await createService().sendText({
+      conversationId: 'c1',
+      to: '254711111111',
+      text: 'greeting with numbered fallback',
+      channel: 'baileys',
+      tenantId: 'tenant-1',
+      twilioContent: 'eventType',
+      baileysList: {
+        kind: 'list',
+        text: 'Hi',
+        title: 'Event',
+        buttonText: 'Choose',
+        sections: [{ title: 'Types', rows: [{ title: 'Wedding', rowId: 'wedding' }] }],
+      },
+    });
+
+    expect(router.sendBaileysList).toHaveBeenCalled();
+    expect(router.sendText).not.toHaveBeenCalled();
+    expect(router.sendContent).not.toHaveBeenCalled();
   });
 });

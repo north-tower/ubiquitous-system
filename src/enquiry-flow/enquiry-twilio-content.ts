@@ -4,7 +4,8 @@ import { ENQUIRY_STEPS, type EnquiryStep } from './enquiry-steps';
  * Twilio Content types for WhatsApp (in-session). See:
  * https://www.twilio.com/docs/content/content-types-overview
  *
- * Baileys/Meta tenants keep numbered text from enquiry-copy; only Twilio uses these.
+ * Twilio uses these Content templates. Baileys uses native lists/buttons where wired
+ * (see enquiry-baileys-interactive.ts); plain text remains the fallback.
  */
 export type TwilioEnquiryContentKind =
   | 'text'

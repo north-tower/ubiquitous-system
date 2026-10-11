@@ -179,6 +179,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     let replyText: string;
     let twilioContent: EnquiryTwilioContentKey | undefined;
     let twilioContentVariables: EnquiryReply['twilioContentVariables'];
+    let baileysList: EnquiryReply['baileysList'];
     let silent = false;
     if (input.flow === 'enquiry_intake') {
       const reply = await this.enquiryFlow.handleInbound(
@@ -188,6 +189,7 @@ export class WhatsappWebhookService implements OnModuleInit {
       replyText = reply.replyText;
       twilioContent = reply.twilioContent;
       twilioContentVariables = reply.twilioContentVariables;
+      baileysList = reply.baileysList;
       silent = Boolean(reply.silent);
     } else if (input.flow === 'pos_ops') {
       const reply = await this.posOpsFlow.handleInbound(
@@ -217,6 +219,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         channel: input.channel,
         tenantId: input.tenantId,
         ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
+        ...(baileysList ? { baileysList } : {}),
       },
     ]);
   }
