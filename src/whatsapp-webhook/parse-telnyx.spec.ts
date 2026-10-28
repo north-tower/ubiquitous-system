@@ -65,6 +65,7 @@ describe('parseTelnyxWebhook', () => {
       phoneNumber: '254711111111',
       text: 'hello',
       messageId: 'msg-1',
+      businessPhoneNumber: '+15551234567',
       raw: SAMPLE_TELNYX_TEXT_WEBHOOK,
     });
   });
@@ -260,6 +261,7 @@ describe('parseTelnyxWebhook WABA', () => {
       phoneNumber: '254799229340',
       text: 'Hi',
       messageId: 'wamid.TEST_FLAT',
+      businessPhoneNumber: '+254786487316',
       raw: SAMPLE_TELNYX_FLAT_WABA_WEBHOOK,
     });
     expect(

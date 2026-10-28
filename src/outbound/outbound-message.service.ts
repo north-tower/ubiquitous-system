@@ -33,6 +33,8 @@ export type OutboundTextJob = {
   to: string;
   text: string;
   channel?: WhatsappChannel;
+  /** Telnyx outbound `from` (E.164). Defaults to TELNYX_WHATSAPP_FROM when omitted. */
+  telnyxFrom?: string;
   /** Baileys replies go out on the socket that received the inbound message. */
   tenantId?: string;
   /** Twilio Content template for enquiry_intake (Twilio channel only). */
@@ -137,6 +139,7 @@ export class OutboundMessageService {
       job.text,
       channel,
       job.tenantId,
+      job.telnyxFrom,
     );
     await this.conversations.recordOutbound({
       conversationId: job.conversationId,

@@ -5,6 +5,8 @@ export type ParsedTelnyxInbound = {
   phoneNumber: string;
   text: string | null;
   messageId: string | null;
+  /** WABA display number from the webhook (E.164), for Telnyx outbound `from`. */
+  businessPhoneNumber: string | null;
   raw: unknown;
 };
 
@@ -22,6 +24,60 @@ function readPhoneNumber(value: unknown): string | null {
   }
   const digits = toDigits(value.phone_number);
   return digits || null;
+}
+
+function readDisplayPhoneE164(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith('+')) {
+    const digits = toDigits(trimmed);
+    return digits ? `+${digits}` : null;
+  }
+  const digits = toDigits(trimmed);
+  return digits ? `+${digits}` : null;
+}
+
+/** Business WhatsApp number that received the inbound message (Telnyx `from` on reply). */
+export function readTelnyxBusinessPhoneNumber(body: unknown): string | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+  const data = body.data;
+  if (!isRecord(data)) {
+    return null;
+  }
+  const payload = data.payload;
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const metadata = payload.metadata;
+  if (isRecord(metadata)) {
+    const fromMetadata = readDisplayPhoneE164(metadata.display_phone_number);
+    if (fromMetadata) {
+      return fromMetadata;
+    }
+  }
+
+  const to = payload.to;
+  if (Array.isArray(to)) {
+    for (const entry of to) {
+      if (!isRecord(entry)) {
+        continue;
+      }
+      const digits = readPhoneNumber(entry);
+      if (digits) {
+        return `+${digits}`;
+      }
+    }
+  }
+
+  return null;
 }
 
 /** E.164 digits or a WhatsApp BSUID (e.g. US.1349…). */
@@ -178,8 +234,34 @@ function parseTelnyxWhatsappPayloadRecord(
     phoneNumber: waId,
     text: readInboundText(payload),
     messageId,
+    businessPhoneNumber: readBusinessPhoneFromPayload(payload),
     raw: payload,
   };
+}
+
+function readBusinessPhoneFromPayload(
+  payload: Record<string, unknown>,
+): string | null {
+  const metadata = payload.metadata;
+  if (isRecord(metadata)) {
+    const fromMetadata = readDisplayPhoneE164(metadata.display_phone_number);
+    if (fromMetadata) {
+      return fromMetadata;
+    }
+  }
+  const to = payload.to;
+  if (Array.isArray(to)) {
+    for (const entry of to) {
+      if (!isRecord(entry)) {
+        continue;
+      }
+      const digits = readPhoneNumber(entry);
+      if (digits) {
+        return `+${digits}`;
+      }
+    }
+  }
+  return null;
 }
 
 function readWaIdFromWabaMessage(message: Record<string, unknown>): string | null {
@@ -247,6 +329,7 @@ function parseTelnyxFlattenedWabaPayload(
     phoneNumber: waId,
     text: readWhatsAppBodyText(first),
     messageId,
+    businessPhoneNumber: readBusinessPhoneFromPayload(payload),
     raw: payload,
   };
 }
@@ -272,6 +355,9 @@ function parseTelnyxWabaMessages(body: Record<string, unknown>): ParsedTelnyxInb
       phoneNumber: first.phoneNumber,
       text: first.text,
       messageId,
+      businessPhoneNumber:
+        readTelnyxBusinessPhoneNumber(body) ??
+        readBusinessPhoneFromPayload(payload),
       raw: body,
     };
   }
@@ -388,7 +474,10 @@ function parseTelnyxNativeWhatsappEvent(
   if (!parsed) {
     return null;
   }
-  return { ...parsed, raw: body };
+  const businessPhoneNumber =
+    readTelnyxBusinessPhoneNumber(body) ??
+    readBusinessPhoneFromPayload(payload);
+  return { ...parsed, businessPhoneNumber, raw: body };
 }
 
 export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
@@ -399,5 +488,9 @@ export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
   if (waba) {
     return waba;
   }
-  return parseTelnyxNativeWhatsappEvent(body);
+  const native = parseTelnyxNativeWhatsappEvent(body);
+  if (native) {
+    return native;
+  }
+  return null;
 }

@@ -55,14 +55,19 @@ export class TelnyxWhatsappClient implements WhatsappSender {
   async sendText(
     to: string,
     body: string,
+    fromOverride?: string,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const apiKey = this.config.get<string>('TELNYX_API_KEY');
-    const from = this.config.get<string>('TELNYX_WHATSAPP_FROM');
-    if (!apiKey || !from) {
+    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
+    const fromRaw = fromOverride?.trim() || configuredFrom;
+    if (!apiKey || !fromRaw) {
       throw new Error(
-        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM are required',
+        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
       );
     }
+
+    const from = toE164(fromRaw);
+    const toAddress = toE164(to);
 
     const response = await fetch('https://api.telnyx.com/v2/messages/whatsapp', {
       method: 'POST',
@@ -71,8 +76,8 @@ export class TelnyxWhatsappClient implements WhatsappSender {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: toE164(from),
-        to: toE164(to),
+        from,
+        to: toAddress,
         whatsapp_message: {
           type: 'text',
           text: {
@@ -92,9 +97,15 @@ export class TelnyxWhatsappClient implements WhatsappSender {
     }
 
     if (!response.ok) {
+      const bodyText =
+        typeof raw === 'string' ? raw : JSON.stringify(raw);
+      const hint =
+        bodyText.includes('10004') || bodyText.includes('Invalid source number')
+          ? ` Check TELNYX_WHATSAPP_FROM is your verified WABA number in E.164 (webhook used from=${from}).`
+          : '';
       throw new TelnyxSendError(
         response.status,
-        typeof raw === 'string' ? raw : JSON.stringify(raw),
+        `${bodyText}${hint}`,
       );
     }
 

@@ -32,6 +32,7 @@ export class WhatsappSendRouter {
     body: string,
     preferred?: WhatsappChannel,
     tenantId?: string,
+    telnyxFrom?: string,
   ): Promise<WhatsappSendResult> {
     const order = this.order(preferred);
     if (order.length === 0) {
@@ -47,7 +48,9 @@ export class WhatsappSendRouter {
     for (const [index, sender] of order.entries()) {
       try {
         const result =
-          sender.channel === 'baileys' && tenantId
+          sender.channel === 'telnyx'
+            ? await this.telnyx.sendText(to, body, telnyxFrom)
+            : sender.channel === 'baileys' && tenantId
             ? await sender.sendText(to, body, tenantId)
             : await sender.sendText(to, body);
         return { channel: sender.channel, ...result };

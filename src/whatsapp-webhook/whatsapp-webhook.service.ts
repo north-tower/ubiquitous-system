@@ -190,6 +190,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         text: parsed.text,
         raw: parsed.raw,
         channel: 'telnyx',
+        telnyxFrom: parsed.businessPhoneNumber ?? undefined,
       });
     } catch (error) {
       this.logInboundProcessingFailed('Telnyx', error);
@@ -217,6 +218,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     text: string | null;
     raw: unknown;
     channel: 'meta' | 'twilio' | 'telnyx' | 'baileys';
+    telnyxFrom?: string;
   }): Promise<void> {
     let { conversation } = await this.conversations.recordInbound({
       tenantId: input.tenantId,
@@ -284,6 +286,11 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
+    const telnyxJobFields =
+      input.channel === 'telnyx' && input.telnyxFrom
+        ? { telnyxFrom: input.telnyxFrom }
+        : {};
+
     const outboundJobs = [
       ...(prefaceTexts ?? []).map((text) => ({
         conversationId: conversation.id,
@@ -291,6 +298,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         text,
         channel: input.channel,
         tenantId: input.tenantId,
+        ...telnyxJobFields,
       })),
       {
         conversationId: conversation.id,
@@ -298,6 +306,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         text: replyText,
         channel: input.channel,
         tenantId: input.tenantId,
+        ...telnyxJobFields,
         ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
         ...(baileysList ? { baileysList } : {}),
       },
