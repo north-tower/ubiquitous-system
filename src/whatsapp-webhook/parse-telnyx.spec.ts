@@ -1,4 +1,7 @@
-import { parseTelnyxWebhook } from './parse-telnyx';
+import {
+  parseTelnyxWebhook,
+  shouldSilentlyIgnoreTelnyxWebhook,
+} from './parse-telnyx';
 
 export const SAMPLE_TELNYX_TEXT_WEBHOOK = {
   data: {
@@ -32,6 +35,29 @@ describe('parseTelnyxWebhook', () => {
       text: 'hello',
       messageId: 'msg-1',
       raw: SAMPLE_TELNYX_TEXT_WEBHOOK,
+    });
+  });
+
+  it('reads sender from payload.body.from when payload.from is absent', () => {
+    expect(
+      parseTelnyxWebhook({
+        data: {
+          event_type: 'message.received',
+          payload: {
+            direction: 'inbound',
+            type: 'WHATSAPP',
+            body: {
+              from: '+254711222333',
+              type: 'text',
+              text: { body: 'Hi from Telnyx shape' },
+            },
+          },
+        },
+      }),
+    ).toMatchObject({
+      waId: '254711222333',
+      phoneNumber: '254711222333',
+      text: 'Hi from Telnyx shape',
     });
   });
 
@@ -87,5 +113,32 @@ describe('parseTelnyxWebhook', () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+describe('shouldSilentlyIgnoreTelnyxWebhook', () => {
+  it('ignores delivery status events on the same URL', () => {
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook({
+        data: {
+          event_type: 'message.sent',
+          payload: { direction: 'outbound', type: 'WHATSAPP' },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook({
+        data: {
+          event_type: 'message.finalized',
+          payload: { direction: 'outbound', type: 'WHATSAPP' },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('does not ignore inbound WhatsApp message.received', () => {
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook(SAMPLE_TELNYX_TEXT_WEBHOOK),
+    ).toBe(false);
   });
 });

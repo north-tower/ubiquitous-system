@@ -26,7 +26,11 @@ import { matchResetCommand } from '../state-machine/match-reset-command';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
-import { parseTelnyxWebhook } from './parse-telnyx';
+import {
+  parseTelnyxWebhook,
+  shouldSilentlyIgnoreTelnyxWebhook,
+  summarizeTelnyxWebhook,
+} from './parse-telnyx';
 import { parseTwilioWebhook } from './parse-twilio';
 
 @Injectable()
@@ -139,9 +143,14 @@ export class WhatsappWebhookService implements OnModuleInit {
   }
 
   async handleTelnyxInbound(body: unknown): Promise<void> {
+    if (shouldSilentlyIgnoreTelnyxWebhook(body)) {
+      return;
+    }
     const parsed = parseTelnyxWebhook(body);
     if (!parsed) {
-      this.logger.warn('Telnyx webhook had no usable WhatsApp message');
+      this.logger.warn(
+        `Telnyx webhook had no usable WhatsApp message (${summarizeTelnyxWebhook(body)})`,
+      );
       return;
     }
 

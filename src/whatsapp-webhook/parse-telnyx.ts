@@ -22,6 +22,136 @@ function readPhoneNumber(value: unknown): string | null {
   return digits || null;
 }
 
+/** E.164 digits or a WhatsApp BSUID (e.g. US.1349…). */
+function readInboundSender(payload: Record<string, unknown>): string | null {
+  const fromObject = readPhoneNumber(payload.from);
+  if (fromObject) {
+    return fromObject;
+  }
+  if (typeof payload.from === 'string') {
+    const trimmed = payload.from.trim();
+    if (trimmed) {
+      if (/^[A-Z]{2}\./.test(trimmed)) {
+        return trimmed;
+      }
+      const digits = toDigits(trimmed);
+      if (digits) {
+        return digits;
+      }
+    }
+  }
+
+  const body = payload.body;
+  if (isRecord(body)) {
+    if (typeof body.from === 'string') {
+      const trimmed = body.from.trim();
+      if (trimmed) {
+        if (/^[A-Z]{2}\./.test(trimmed)) {
+          return trimmed;
+        }
+        const digits = toDigits(trimmed);
+        if (digits) {
+          return digits;
+        }
+      }
+    }
+    if (typeof body.from_user_id === 'string') {
+      const trimmed = body.from_user_id.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function isWhatsappPayload(payload: Record<string, unknown>): boolean {
+  const messageType =
+    typeof payload.type === 'string' ? payload.type.toUpperCase() : '';
+  if (messageType === 'WHATSAPP') {
+    return true;
+  }
+  const body = payload.body;
+  if (!isRecord(body)) {
+    return false;
+  }
+  if (
+    typeof body.foreign_id === 'string' &&
+    body.foreign_id.startsWith('wamid.')
+  ) {
+    return true;
+  }
+  const bodyType = typeof body.type === 'string' ? body.type.toLowerCase() : '';
+  return (
+    bodyType === 'text' ||
+    bodyType === 'interactive' ||
+    bodyType === 'image' ||
+    bodyType === 'audio' ||
+    bodyType === 'video' ||
+    bodyType === 'document' ||
+    bodyType === 'button' ||
+    bodyType === 'reaction' ||
+    bodyType === 'edit' ||
+    bodyType === 'revoke'
+  );
+}
+
+export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
+  if (!isRecord(body)) {
+    return false;
+  }
+  const data = body.data;
+  if (!isRecord(data) || typeof data.event_type !== 'string') {
+    return false;
+  }
+  const eventType = data.event_type;
+  if (eventType === 'message.sent' || eventType === 'message.finalized') {
+    return true;
+  }
+  if (eventType !== 'message.received') {
+    return true;
+  }
+  const payload = data.payload;
+  if (!isRecord(payload)) {
+    return false;
+  }
+  const messageType =
+    typeof payload.type === 'string' ? payload.type.toUpperCase() : '';
+  if (messageType === 'SMS' || messageType === 'MMS') {
+    return true;
+  }
+  const direction =
+    typeof payload.direction === 'string'
+      ? payload.direction.toLowerCase()
+      : 'inbound';
+  if (direction !== 'inbound') {
+    return true;
+  }
+  return false;
+}
+
+export function summarizeTelnyxWebhook(body: unknown): string {
+  if (!isRecord(body)) {
+    return 'body is not an object';
+  }
+  const data = body.data;
+  if (!isRecord(data)) {
+    return 'missing data';
+  }
+  const eventType =
+    typeof data.event_type === 'string' ? data.event_type : 'unknown';
+  const payload = data.payload;
+  if (!isRecord(payload)) {
+    return `event_type=${eventType} missing payload`;
+  }
+  const messageType =
+    typeof payload.type === 'string' ? payload.type : 'unknown';
+  const direction =
+    typeof payload.direction === 'string' ? payload.direction : 'unknown';
+  return `event_type=${eventType} payload.type=${messageType} direction=${direction}`;
+}
+
 function readWhatsAppBodyText(body: Record<string, unknown>): string | null {
   const interactive = body.interactive;
   if (isRecord(interactive)) {
@@ -89,9 +219,7 @@ export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
     return null;
   }
 
-  const messageType =
-    typeof payload.type === 'string' ? payload.type.toUpperCase() : '';
-  if (messageType !== 'WHATSAPP') {
+  if (!isWhatsappPayload(payload)) {
     return null;
   }
 
@@ -103,7 +231,7 @@ export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
     return null;
   }
 
-  const waId = readPhoneNumber(payload.from);
+  const waId = readInboundSender(payload);
   if (!waId) {
     return null;
   }

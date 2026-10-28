@@ -14,6 +14,9 @@ export class TelnyxSendError extends Error {
 
 function toE164(phone: string): string {
   const trimmed = phone.trim();
+  if (/^[A-Z]{2}\./.test(trimmed)) {
+    return trimmed;
+  }
   if (trimmed.startsWith('+')) {
     return trimmed;
   }
