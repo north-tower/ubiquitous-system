@@ -131,6 +131,17 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
   return false;
 }
 
+export function readTelnyxWebhookEventType(body: unknown): string | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+  const data = body.data;
+  if (!isRecord(data) || typeof data.event_type !== 'string') {
+    return null;
+  }
+  return data.event_type;
+}
+
 export function summarizeTelnyxWebhook(body: unknown): string {
   if (!isRecord(body)) {
     return 'body is not an object';
