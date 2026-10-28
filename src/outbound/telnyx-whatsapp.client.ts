@@ -39,9 +39,85 @@ function readTelnyxMessageId(raw: unknown): string | null {
   return typeof id === 'string' ? id : null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function buildTelnyxWhatsappSendBody(input: {
+  from: string;
+  to: string;
+  body: string;
+  messagingProfileId?: string | null;
+}): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    from: input.from,
+    to: input.to,
+    type: 'WHATSAPP',
+    whatsapp_message: {
+      type: 'text',
+      text: {
+        body: input.body,
+        preview_url: false,
+      },
+    },
+  };
+  if (input.messagingProfileId) {
+    payload.messaging_profile_id = input.messagingProfileId;
+  }
+  return payload;
+}
+
+async function resolveMessagingProfileId(
+  apiKey: string,
+  fromE164: string,
+  configuredProfileId: string | undefined,
+  cache: Map<string, string | null>,
+): Promise<string | null> {
+  const configured = configuredProfileId?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (cache.has(fromE164)) {
+    return cache.get(fromE164) ?? null;
+  }
+
+  const url = new URL('https://api.telnyx.com/v2/phone_numbers/messaging');
+  url.searchParams.set('filter[phone_number]', fromE164);
+  url.searchParams.set('page[size]', '1');
+
+  let resolved: string | null = null;
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (response.ok) {
+      const raw = (await response.json()) as unknown;
+      if (isRecord(raw) && Array.isArray(raw.data)) {
+        for (const entry of raw.data) {
+          if (!isRecord(entry)) {
+            continue;
+          }
+          const profileId = entry.messaging_profile_id;
+          if (typeof profileId === 'string' && profileId.trim()) {
+            resolved = profileId.trim();
+            break;
+          }
+        }
+      }
+    }
+  } catch {
+    resolved = null;
+  }
+
+  cache.set(fromE164, resolved);
+  return resolved;
+}
+
 @Injectable()
 export class TelnyxWhatsappClient implements WhatsappSender {
   readonly channel = 'telnyx' as const;
+
+  private readonly messagingProfileCache = new Map<string, string | null>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -69,23 +145,27 @@ export class TelnyxWhatsappClient implements WhatsappSender {
     const from = toE164(fromRaw);
     const toAddress = toE164(to);
 
+    const messagingProfileId = await resolveMessagingProfileId(
+      apiKey,
+      from,
+      this.config.get<string>('TELNYX_MESSAGING_PROFILE_ID'),
+      this.messagingProfileCache,
+    );
+
+    const requestBody = buildTelnyxWhatsappSendBody({
+      from,
+      to: toAddress,
+      body,
+      messagingProfileId,
+    });
+
     const response = await fetch('https://api.telnyx.com/v2/messages/whatsapp', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from,
-        to: toAddress,
-        whatsapp_message: {
-          type: 'text',
-          text: {
-            body,
-            preview_url: false,
-          },
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     let raw: unknown = null;
@@ -101,7 +181,7 @@ export class TelnyxWhatsappClient implements WhatsappSender {
         typeof raw === 'string' ? raw : JSON.stringify(raw);
       const hint =
         bodyText.includes('10004') || bodyText.includes('Invalid source number')
-          ? ` Check TELNYX_WHATSAPP_FROM is your verified WABA number in E.164 (webhook used from=${from}).`
+          ? ` Telnyx rejected from=${from} (profile=${messagingProfileId ?? 'none'}). Set TELNYX_MESSAGING_PROFILE_ID to the WhatsApp messaging profile UUID and assign +254786487316 under Messaging → WhatsApp → Manage Numbers in the Telnyx portal.`
           : '';
       throw new TelnyxSendError(
         response.status,
