@@ -2,7 +2,11 @@ import {
   formatNumberedOptions,
   type NumberedOption,
 } from './match-numbered-option';
-import { EVENT_TYPE_OPTIONS } from './enquiry-options';
+import {
+  BUDGET_OPTIONS,
+  EVENT_TYPE_OPTIONS,
+  SERVICE_OPTIONS,
+} from './enquiry-options';
 import { ENQUIRY_STEPS, type EnquiryStep } from './enquiry-steps';
 
 export type BaileysListRow = {
@@ -17,6 +21,8 @@ export type BaileysListMessageSpec = {
   title: string;
   buttonText: string;
   sections: { title: string; rows: BaileysListRow[] }[];
+  /** Poll taps allowed (default 1). Use options.length for multi-select. */
+  pollSelectableCount?: number;
 };
 
 const ENQUIRY_BAILEYS_LIST_BY_STEP: Partial<
@@ -24,6 +30,10 @@ const ENQUIRY_BAILEYS_LIST_BY_STEP: Partial<
 > = {
   [ENQUIRY_STEPS.AWAITING_EVENT_TYPE]: (replyText) =>
     eventTypeListMessage(replyText),
+  [ENQUIRY_STEPS.AWAITING_SERVICES]: (replyText) =>
+    servicesListMessage(replyText),
+  [ENQUIRY_STEPS.AWAITING_BUDGET]: (replyText) =>
+    budgetListMessage(replyText),
 };
 
 export function enquiryBaileysListForStep(
@@ -39,6 +49,7 @@ function eventTypeListMessage(replyText: string): BaileysListMessageSpec {
     text: stripOptionListFromReply(replyText, EVENT_TYPE_OPTIONS),
     title: 'What are you planning?',
     buttonText: 'Choose event type',
+    pollSelectableCount: 1,
     sections: [
       {
         title: 'Event type',
@@ -48,6 +59,45 @@ function eventTypeListMessage(replyText: string): BaileysListMessageSpec {
         })),
       },
     ],
+  };
+}
+
+function budgetListMessage(replyText: string): BaileysListMessageSpec {
+  const intro = stripOptionListFromReply(replyText, BUDGET_OPTIONS);
+  return {
+    kind: 'list',
+    text: [
+      intro,
+      '',
+      'Or type *skip* or an amount (e.g. *80k*) in chat.',
+    ].join('\n'),
+    title: 'Budget range',
+    buttonText: 'Choose budget range',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Budget',
+        rows: BUDGET_OPTIONS.map((option) => ({
+          title: option.label,
+          rowId: option.id,
+        })),
+      },
+    ],
+  };
+}
+
+function servicesListMessage(replyText: string): BaileysListMessageSpec {
+  const rows = SERVICE_OPTIONS.map((option) => ({
+    title: option.label,
+    rowId: option.id,
+  }));
+  return {
+    kind: 'list',
+    text: stripOptionListFromReply(replyText, SERVICE_OPTIONS),
+    title: 'Services',
+    buttonText: 'Choose services (pick all that apply)',
+    pollSelectableCount: rows.length,
+    sections: [{ title: 'Services', rows }],
   };
 }
 

@@ -21,6 +21,25 @@ export type BaileysInboundMessage = {
         title?: string | null;
       } | null;
     } | null;
+    interactiveResponseMessage?: {
+      nativeFlowResponseMessage?: {
+        paramsJson?: string | null;
+      } | null;
+    } | null;
+    pollUpdateMessage?: {
+      pollCreationMessageKey?: {
+        id?: string | null;
+        fromMe?: boolean | null;
+        remoteJid?: string | null;
+        remoteJidAlt?: string | null;
+        participant?: string | null;
+        participantAlt?: string | null;
+      } | null;
+      vote?: {
+        encPayload?: Uint8Array | Buffer | null;
+        encIv?: Uint8Array | Buffer | null;
+      } | null;
+    } | null;
   } | null;
 };
 
@@ -85,11 +104,42 @@ function readInboundText(message: NonNullable<BaileysInboundMessage['message']>)
   if (listTitle) {
     return listTitle;
   }
+  const nativeFlow = readNativeFlowSelection(
+    message.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson,
+  );
+  if (nativeFlow) {
+    return nativeFlow;
+  }
   return (
     message.conversation ??
     message.extendedTextMessage?.text ??
     ''
   );
+}
+
+function readNativeFlowSelection(paramsJson: string | null | undefined): string {
+  const raw = paramsJson?.trim();
+  if (!raw) {
+    return '';
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    for (const key of [
+      'id',
+      'selected_id',
+      'selectedId',
+      'selected_row_id',
+      'selectedRowId',
+    ]) {
+      const value = parsed[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+  } catch {
+    return '';
+  }
+  return '';
 }
 
 function phoneJidFrom(

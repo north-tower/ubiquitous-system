@@ -5,6 +5,7 @@ import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
 import { OutboundMessageService } from './outbound-message.service';
 import { TwilioEnquiryContentConfigService } from './twilio-enquiry-content-config.service';
+import { TelnyxWhatsappClient } from './telnyx-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -13,6 +14,7 @@ import { WhatsappSendRouter } from './whatsapp-send.router';
   providers: [
     MetaWhatsappClient,
     TwilioWhatsappClient,
+    TelnyxWhatsappClient,
     BaileysWhatsappClient,
     WhatsappSendRouter,
     OutboundMessageService,

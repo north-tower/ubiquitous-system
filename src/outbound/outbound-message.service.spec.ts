@@ -236,6 +236,11 @@ describe('OutboundMessageService enquiry Twilio content', () => {
       messageId: 'BA-list',
       raw: {},
     });
+    router.sendText.mockResolvedValue({
+      channel: 'baileys',
+      messageId: 'BA-text',
+      raw: {},
+    });
 
     await createService().sendText({
       conversationId: 'c1',
@@ -254,7 +259,12 @@ describe('OutboundMessageService enquiry Twilio content', () => {
     });
 
     expect(router.sendBaileysList).toHaveBeenCalled();
-    expect(router.sendText).not.toHaveBeenCalled();
+    expect(router.sendText).toHaveBeenCalledWith(
+      '254711111111',
+      'Hi',
+      'baileys',
+      'tenant-1',
+    );
     expect(router.sendContent).not.toHaveBeenCalled();
   });
 });

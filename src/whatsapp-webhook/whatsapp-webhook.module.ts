@@ -6,6 +6,7 @@ import { PosOpsFlowModule } from '../pos-ops-flow/pos-ops-flow.module';
 import { OutboundModule } from '../outbound/outbound.module';
 import { StateMachineModule } from '../state-machine/state-machine.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { TelnyxWebhookController } from './telnyx-webhook.controller';
 import { TwilioWebhookController } from './twilio-webhook.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappWebhookService } from './whatsapp-webhook.service';
@@ -20,7 +21,11 @@ import { WhatsappWebhookService } from './whatsapp-webhook.service';
     OutboundModule,
     StateMachineModule,
   ],
-  controllers: [WhatsappWebhookController, TwilioWebhookController],
+  controllers: [
+    WhatsappWebhookController,
+    TwilioWebhookController,
+    TelnyxWebhookController,
+  ],
   providers: [WhatsappWebhookService],
 })
 export class WhatsappWebhookModule {}

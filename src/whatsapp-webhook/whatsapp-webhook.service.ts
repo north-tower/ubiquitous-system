@@ -18,6 +18,7 @@ import {
   BaileysWhatsappClient,
   type BaileysInboundNotice,
 } from '../outbound/baileys-whatsapp.client';
+import { previewBaileysText } from '../outbound/baileys-debug';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
@@ -25,6 +26,7 @@ import { matchResetCommand } from '../state-machine/match-reset-command';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
+import { parseTelnyxWebhook } from './parse-telnyx';
 import { parseTwilioWebhook } from './parse-twilio';
 
 @Injectable()
@@ -136,6 +138,33 @@ export class WhatsappWebhookService implements OnModuleInit {
     }
   }
 
+  async handleTelnyxInbound(body: unknown): Promise<void> {
+    const parsed = parseTelnyxWebhook(body);
+    if (!parsed) {
+      this.logger.warn('Telnyx webhook had no usable WhatsApp message');
+      return;
+    }
+
+    const tenant = await this.tenantResolver.resolveForTelnyxInbound();
+    if (!tenant) {
+      this.logger.warn('No tenant for Telnyx inbound');
+      return;
+    }
+
+    try {
+      await this.processInbound({
+        tenantId: tenant.id,
+        flow: tenant.flow ?? DEFAULT_TENANT_FLOW,
+        phoneNumber: parsed.phoneNumber,
+        text: parsed.text,
+        raw: parsed.raw,
+        channel: 'telnyx',
+      });
+    } catch (error) {
+      this.logInboundProcessingFailed('Telnyx', error);
+    }
+  }
+
   private logInboundProcessingFailed(channel: string, error: unknown): void {
     if (error instanceof InsightfulPosError) {
       this.logger.error(
@@ -156,7 +185,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     phoneNumber: string;
     text: string | null;
     raw: unknown;
-    channel: 'meta' | 'twilio' | 'baileys';
+    channel: 'meta' | 'twilio' | 'telnyx' | 'baileys';
   }): Promise<void> {
     let { conversation } = await this.conversations.recordInbound({
       tenantId: input.tenantId,
@@ -177,6 +206,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     }
 
     let replyText: string;
+    let prefaceTexts: string[] | undefined;
     let twilioContent: EnquiryTwilioContentKey | undefined;
     let twilioContentVariables: EnquiryReply['twilioContentVariables'];
     let baileysList: EnquiryReply['baileysList'];
@@ -187,6 +217,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         input.text,
       );
       replyText = reply.replyText;
+      prefaceTexts = reply.prefaceTexts;
       twilioContent = reply.twilioContent;
       twilioContentVariables = reply.twilioContentVariables;
       baileysList = reply.baileysList;
@@ -207,11 +238,29 @@ export class WhatsappWebhookService implements OnModuleInit {
       silent = Boolean(reply.silent);
     }
 
+    if (input.channel === 'baileys') {
+      this.logger.log(
+        `Baileys reply plan tenant=${input.tenantId} conversation=${conversation.id} flow=${input.flow} inboundLen=${trimmed.length} silent=${silent} replyLen=${replyText?.length ?? 0} hasList=${Boolean(baileysList)} replyPreview=${previewBaileysText(replyText ?? '')}`,
+      );
+    }
+
     if (silent || !replyText) {
+      if (input.channel === 'baileys') {
+        this.logger.warn(
+          `Baileys outbound skipped tenant=${input.tenantId} conversation=${conversation.id} silent=${silent} replyEmpty=${!replyText}`,
+        );
+      }
       return;
     }
 
-    await this.outbound.sendAll([
+    const outboundJobs = [
+      ...(prefaceTexts ?? []).map((text) => ({
+        conversationId: conversation.id,
+        to: input.phoneNumber,
+        text,
+        channel: input.channel,
+        tenantId: input.tenantId,
+      })),
       {
         conversationId: conversation.id,
         to: input.phoneNumber,
@@ -221,6 +270,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
         ...(baileysList ? { baileysList } : {}),
       },
-    ]);
+    ];
+    await this.outbound.sendAll(outboundJobs);
   }
 }

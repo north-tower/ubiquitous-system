@@ -7,6 +7,7 @@ describe('TenantResolverService', () => {
     findByWhatsappPhoneNumberId: jest.fn(),
     findDefault: jest.fn(),
     findOldestTwilioPrimary: jest.fn(),
+    findOldestTelnyxPrimary: jest.fn(),
     findById: jest.fn(),
   };
 
@@ -18,6 +19,7 @@ describe('TenantResolverService', () => {
     tenantService.findByWhatsappPhoneNumberId.mockReset();
     tenantService.findDefault.mockReset();
     tenantService.findOldestTwilioPrimary.mockReset();
+    tenantService.findOldestTelnyxPrimary.mockReset();
     tenantService.findById.mockReset();
   });
 
@@ -61,6 +63,15 @@ describe('TenantResolverService', () => {
 
     await expect(resolver.resolveForTwilioInbound()).resolves.toBe(tenant);
     expect(tenantService.findOldestTwilioPrimary).toHaveBeenCalled();
+    expect(tenantService.findDefault).not.toHaveBeenCalled();
+  });
+
+  it('resolves the Telnyx-primary tenant for Telnyx inbound', async () => {
+    const tenant = { id: 'tenant-2', name: 'Telnyx Co' } as Tenant;
+    tenantService.findOldestTelnyxPrimary.mockResolvedValue(tenant);
+
+    await expect(resolver.resolveForTelnyxInbound()).resolves.toBe(tenant);
+    expect(tenantService.findOldestTelnyxPrimary).toHaveBeenCalled();
     expect(tenantService.findDefault).not.toHaveBeenCalled();
   });
 

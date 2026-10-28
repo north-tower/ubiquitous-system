@@ -44,6 +44,7 @@ import {
   parseKenyanPhone,
 } from './parse-kenyan-phone';
 import { combineVenue, parseVenue } from './parse-venue';
+import { enrichEnquiryReplyWithStory } from './enquiry-story';
 import {
   confirmEnquiryReply,
   enquiryReplyForStep,
@@ -223,10 +224,17 @@ export class EnquiryFlowService {
         copy.REASK_EVENT_TYPE,
       );
     }
-    return this.afterField(session, { eventType: matched.label }, {
+    const next = await this.afterField(session, { eventType: matched.label }, {
       step: ENQUIRY_STEPS.AWAITING_DATE,
       replyText: copy.ASK_DATE,
     });
+    return {
+      ...next,
+      prefaceTexts: [
+        copy.ackEventTypeChoice(matched.label),
+        ...(next.prefaceTexts ?? []),
+      ],
+    };
   }
 
   private async captureDate(
@@ -255,10 +263,17 @@ export class EnquiryFlowService {
         copy.REASK_SERVICES,
       );
     }
-    return this.afterField(session, { requestedServices }, {
+    const next = await this.afterField(session, { requestedServices }, {
       step: ENQUIRY_STEPS.AWAITING_GUESTS,
       replyText: copy.ASK_GUESTS,
     });
+    return {
+      ...next,
+      prefaceTexts: [
+        copy.ackServicesChoice(requestedServices),
+        ...(next.prefaceTexts ?? []),
+      ],
+    };
   }
 
   private async captureGuests(
@@ -340,7 +355,7 @@ export class EnquiryFlowService {
     const band = matchNumberedOption(text, BUDGET_OPTIONS);
     const skipped = matchSkipCommand(text) || band?.id === 'unsure';
     if (skipped) {
-      return this.afterField(
+      const next = await this.afterField(
         session,
         {
           budgetRange: undefined,
@@ -349,6 +364,10 @@ export class EnquiryFlowService {
         },
         { step: ENQUIRY_STEPS.AWAITING_DETAILS, replyText: copy.ASK_DETAILS },
       );
+      return {
+        ...next,
+        prefaceTexts: [copy.ackBudgetSkipped(), ...(next.prefaceTexts ?? [])],
+      };
     }
 
     const parsed = band
@@ -374,20 +393,29 @@ export class EnquiryFlowService {
       budgetAmountKes: parsed.amountKes ?? undefined,
       budgetLooksLow: looksLow || undefined,
     };
+    const ack = copy.ackBudgetChoice(parsed.display);
     if (looksLow) {
       await this.sessions.save(session, {
         step: ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM,
         payload: { ...session.payload, ...budgetPayload },
       });
-      return enquiryReplyForStep(
-        ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM,
-        copy.askBudgetLow(parsed.display),
-      );
+      const mergedPayload = { ...session.payload, ...budgetPayload };
+      return enrichEnquiryReplyWithStory(mergedPayload, {
+        ...enquiryReplyForStep(
+          ENQUIRY_STEPS.AWAITING_BUDGET_CONFIRM,
+          copy.askBudgetLow(parsed.display),
+        ),
+        prefaceTexts: [ack],
+      });
     }
-    return this.afterField(session, budgetPayload, {
+    const next = await this.afterField(session, budgetPayload, {
       step: ENQUIRY_STEPS.AWAITING_DETAILS,
       replyText: copy.ASK_DETAILS,
     });
+    return {
+      ...next,
+      prefaceTexts: [ack, ...(next.prefaceTexts ?? [])],
+    };
   }
 
   private async captureBudgetConfirm(
@@ -614,7 +642,10 @@ export class EnquiryFlowService {
     if (editing || step === ENQUIRY_STEPS.AWAITING_CONFIRM) {
       return confirmEnquiryReply(updated.payload);
     }
-    return enquiryReplyForStep(sequential.step, sequential.replyText);
+    return enrichEnquiryReplyWithStory(
+      updated.payload,
+      enquiryReplyForStep(sequential.step, sequential.replyText),
+    );
   }
 
   private async handover(
@@ -815,7 +846,40 @@ export class EnquiryFlowService {
   }
 }
 
+function matchCommaSeparatedServiceIds(
+  text: string,
+  options: typeof SERVICE_OPTIONS,
+): (typeof SERVICE_OPTIONS)[number][] | null {
+  const trimmed = text.trim();
+  if (!trimmed.includes(',')) {
+    const byId = options.find((option) => option.id === trimmed);
+    return byId ? [byId] : null;
+  }
+  const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    return null;
+  }
+  const matched = parts.map((part) =>
+    options.find((option) => option.id === part) ??
+      matchNumberedOption(part, options),
+  );
+  if (matched.some((row) => !row)) {
+    return null;
+  }
+  const unique = new Map<string, (typeof SERVICE_OPTIONS)[number]>();
+  for (const row of matched) {
+    if (row) {
+      unique.set(row.id, row);
+    }
+  }
+  return [...unique.values()];
+}
+
 function readServices(text: string): string | null {
+  const fromPollIds = matchCommaSeparatedServiceIds(text, SERVICE_OPTIONS);
+  if (fromPollIds && fromPollIds.length > 0) {
+    return fromPollIds.map((row) => row.label).join(', ');
+  }
   const matched = matchNumberedOptions(text, SERVICE_OPTIONS);
   if (matched && matched.length > 0) {
     return matched.map((row) => row.label).join(', ');

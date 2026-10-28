@@ -27,6 +27,14 @@ export class TenantResolverService {
     return this.tenantService.findDefault();
   }
 
+  async resolveForTelnyxInbound(): Promise<Tenant | null> {
+    const telnyxTenant = await this.tenantService.findOldestTelnyxPrimary();
+    if (telnyxTenant) {
+      return telnyxTenant;
+    }
+    return this.tenantService.findDefault();
+  }
+
   async resolveById(id: string): Promise<Tenant | null> {
     if (!id) {
       return null;

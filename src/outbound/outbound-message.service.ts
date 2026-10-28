@@ -9,6 +9,13 @@ import {
   resolveEnquiryTwilioContentForSend,
 } from './resolve-enquiry-twilio-content-send';
 import {
+  baileysSendCompanionTextBeforeList,
+  isBaileysDebug,
+  previewBaileysText,
+  summarizeBaileysList,
+} from './baileys-debug';
+import { resolveBaileysListWireFormat } from './baileys-list-send';
+import {
   isTwilioContentSendDebug,
   maskContentSid,
   previewContentVariables,
@@ -120,6 +127,11 @@ export class OutboundMessageService {
     }
 
     const channel = await this.resolveSendChannel(job);
+    if (channel === 'baileys' || job.channel === 'baileys') {
+      this.logger.log(
+        `Baileys text send conversation=${job.conversationId} to=${job.to} tenant=${job.tenantId ?? 'none'} chars=${job.text.length} preview=${previewBaileysText(job.text)}`,
+      );
+    }
     const { channel: usedChannel, messageId, raw } = await this.router.sendText(
       job.to,
       job.text,
@@ -192,14 +204,62 @@ export class OutboundMessageService {
   }
 
   private async trySendBaileysList(job: OutboundTextJob): Promise<boolean> {
-    if (
-      job.channel !== 'baileys' ||
-      !job.baileysList ||
-      !this.baileysEnquiryInteractiveEnabled()
-    ) {
+    if (job.channel !== 'baileys') {
       return false;
     }
+    if (!job.baileysList) {
+      if (isBaileysDebug(this.config)) {
+        this.logger.debug(
+          `Baileys list skipped (no baileysList on job) conversation=${job.conversationId}`,
+        );
+      }
+      return false;
+    }
+    if (!this.baileysEnquiryInteractiveEnabled()) {
+      this.logger.warn(
+        `Baileys list skipped (BAILEYS_ENQUIRY_INTERACTIVE=false) conversation=${job.conversationId}`,
+      );
+      return false;
+    }
+    const listSummary = summarizeBaileysList(job.baileysList);
+    const wireFormat = resolveBaileysListWireFormat(this.config);
+    this.logger.log(
+      `Baileys list attempt conversation=${job.conversationId} to=${job.to} tenant=${job.tenantId ?? 'none'} wireFormat=${wireFormat} ${JSON.stringify(listSummary)}`,
+    );
     try {
+      if (wireFormat === 'text') {
+        const body = job.text.trim();
+        if (!body) {
+          this.logger.warn(
+            `Baileys text menu empty conversation=${job.conversationId}`,
+          );
+          return false;
+        }
+        const sent = await this.router.sendText(
+          job.to,
+          body,
+          'baileys',
+          job.tenantId,
+        );
+        await this.conversations.recordOutbound({
+          conversationId: job.conversationId,
+          text: body,
+          rawPayload: {
+            channel: sent.channel,
+            messageId: sent.messageId,
+            baileysList: job.baileysList,
+            baileysListWireFormat: 'text',
+            response: sent.raw,
+          },
+        });
+        this.logger.log(
+          `Sent Baileys text menu conversation=${job.conversationId} to=${job.to}`,
+        );
+        return true;
+      }
+      if (baileysSendCompanionTextBeforeList(this.config)) {
+        await this.sendBaileysCompanionText(job);
+      }
       const sent = await this.router.sendBaileysList(
         job.to,
         job.baileysList,
@@ -222,15 +282,52 @@ export class OutboundMessageService {
     } catch (error) {
       this.logger.error(
         `Baileys list send failed, falling back to text conversation=${job.conversationId}: ${
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error ? error.stack ?? error.message : String(error)
         }`,
       );
+      if (job.baileysList.text.trim()) {
+        job.text = job.baileysList.text;
+      }
       return false;
     }
   }
 
+  private async sendBaileysCompanionText(job: OutboundTextJob): Promise<void> {
+    const body = job.baileysList?.text.trim() || job.text.trim();
+    if (!body) {
+      this.logger.warn(
+        `Baileys companion text empty conversation=${job.conversationId} to=${job.to}`,
+      );
+      return;
+    }
+    this.logger.log(
+      `Baileys companion text conversation=${job.conversationId} to=${job.to} chars=${body.length} preview=${previewBaileysText(body)}`,
+    );
+    const sent = await this.router.sendText(
+      job.to,
+      body,
+      'baileys',
+      job.tenantId,
+    );
+    await this.conversations.recordOutbound({
+      conversationId: job.conversationId,
+      text: body,
+      rawPayload: {
+        channel: sent.channel,
+        messageId: sent.messageId,
+        baileysCompanionText: true,
+        response: sent.raw,
+      },
+    });
+  }
+
   private resolveTwilioContentSend(job: OutboundTextJob) {
-    if (!job.twilioContent || job.channel === 'meta' || job.channel === 'baileys') {
+    if (
+      !job.twilioContent ||
+      job.channel === 'meta' ||
+      job.channel === 'baileys' ||
+      job.channel === 'telnyx'
+    ) {
       return null;
     }
     const plan = resolveEnquiryTwilioContentForSend(this.config, job.twilioContent, {
@@ -256,14 +353,22 @@ export class OutboundMessageService {
     }
     const tenant = await this.tenants.findById(job.tenantId);
     const primary = tenant?.primaryChannel;
-    if (primary === 'baileys' || primary === 'twilio') {
+    if (
+      primary === 'baileys' ||
+      primary === 'twilio' ||
+      primary === 'telnyx'
+    ) {
       return primary;
     }
     return undefined;
   }
 
   async sendAll(jobs: OutboundTextJob[]): Promise<void> {
-    for (const job of jobs) {
+    for (let i = 0; i < jobs.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      const job = jobs[i];
       try {
         await this.sendText(job);
       } catch (error) {

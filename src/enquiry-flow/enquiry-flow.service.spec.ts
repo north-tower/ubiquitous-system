@@ -135,7 +135,11 @@ describe('EnquiryFlowService', () => {
     const opening = await service.handleInbound(conversation, 'hi');
     expect(opening.twilioContent).toBe('eventType');
     expect(opening.replyText).toMatch(/What are you planning/i);
-    await expect(say('church')).resolves.toMatch(/When is it/i);
+    await say('hi');
+    const afterEvent = await service.handleInbound(conversation, 'church');
+    expect(afterEvent.prefaceTexts?.[0]).toMatch(/Church event/i);
+    expect(afterEvent.prefaceTexts?.join('\n')).toMatch(/So far.*Church event/s);
+    expect(afterEvent.replyText).toMatch(/When is it/i);
     sessions.reset();
     await say('hi');
     await expect(say('Birthday or party')).resolves.toMatch(/When is it/i);
@@ -162,6 +166,18 @@ describe('EnquiryFlowService', () => {
     await expect(
       say('sound_pa, lighting'),
     ).resolves.toMatch(/how many guests/i);
+  });
+
+  it('accepts comma-separated poll service ids on one inbound', async () => {
+    await say('hi');
+    await say('wedding');
+    await say('20th December');
+    const afterServices = await service.handleInbound(
+      conversation,
+      'sound_pa,lighting',
+    );
+    expect(afterServices.prefaceTexts?.[0]).toMatch(/Sound & PA, Lighting/i);
+    expect(afterServices.replyText).toMatch(/how many guests/i);
   });
 
   it('walks the enquiry conversation and files it on confirm', async () => {

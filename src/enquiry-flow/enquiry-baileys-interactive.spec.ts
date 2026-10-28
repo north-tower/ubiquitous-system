@@ -3,7 +3,11 @@ import {
   enquiryBaileysListForStep,
   stripOptionListFromReply,
 } from './enquiry-baileys-interactive';
-import { EVENT_TYPE_OPTIONS } from './enquiry-options';
+import {
+  BUDGET_OPTIONS,
+  EVENT_TYPE_OPTIONS,
+  SERVICE_OPTIONS,
+} from './enquiry-options';
 import { ENQUIRY_STEPS } from './enquiry-steps';
 
 describe('enquiryBaileysListForStep', () => {
@@ -18,6 +22,28 @@ describe('enquiryBaileysListForStep', () => {
     );
     expect(list?.text).not.toMatch(/^\d+\s/m);
     expect(list?.text).toMatch(/Divine Budgets/i);
+  });
+
+  it('builds a single-select budget poll spec', () => {
+    const list = enquiryBaileysListForStep(
+      ENQUIRY_STEPS.AWAITING_BUDGET,
+      'Budget?',
+    );
+    expect(list?.pollSelectableCount).toBe(1);
+    expect(list?.sections[0].rows.map((row) => row.rowId)).toEqual(
+      BUDGET_OPTIONS.map((option) => option.id),
+    );
+  });
+
+  it('builds a multi-select services poll spec', () => {
+    const list = enquiryBaileysListForStep(
+      ENQUIRY_STEPS.AWAITING_SERVICES,
+      'Pick services',
+    );
+    expect(list?.pollSelectableCount).toBe(SERVICE_OPTIONS.length);
+    expect(list?.sections[0].rows.map((row) => row.rowId)).toEqual(
+      SERVICE_OPTIONS.map((option) => option.id),
+    );
   });
 
   it('returns nothing for steps without Baileys interactivity yet', () => {

@@ -21,16 +21,46 @@ import {
 import { toDigits, type WhatsappSender } from './whatsapp-channel';
 import {
   isLidProspectKey,
+  isWhatsappLidJid,
   LID_PROSPECT_PREFIX,
   phoneDigitsFromJid,
 } from './baileys-lid';
+import { randomBytes } from 'crypto';
 import {
-  toBaileysListSendContent,
+  baileysListRelayAdditionalNodes,
+  buildBaileysListWaPayload,
+  buildBaileysPollSendContent,
+  listSpecToPollChoices,
+  resolveBaileysListWireFormat,
   type BaileysSendListPayload,
 } from './baileys-list-send';
 import {
+  jidAddressingKind,
+  normalizeWhatsAppUserJid,
+  pickOutboundRecipientJid,
+} from './baileys-outbound-jid';
+import {
+  pollSelectionToOptionId,
+  type BaileysPollChoice,
+} from './baileys-poll-choices';
+import {
+  extractStoredPollFromSent,
+  hasBaileysPollUpdate,
+  multiSelectPollKey,
+  pollCreationMessageId,
+  resolvePollVoteOptionId,
+  type StoredBaileysPoll,
+} from './baileys-poll-vote';
+import {
+  baileysInboundPayloadKeys,
+  isBaileysDebug,
+  previewBaileysText,
+  summarizeBaileysList,
+} from './baileys-debug';
+import {
   parseBaileysTextMessage,
   type BaileysInboundMessage,
+  type ParsedBaileysText,
 } from './parse-baileys-message';
 
 export type BaileysInboundNotice = {
@@ -71,8 +101,16 @@ type BaileysSocket = {
   };
   sendMessage(
     jid: string,
-    content: Record<string, unknown>,
+    content: Record<string, unknown> | { poll: unknown },
   ): Promise<{ key?: { id?: string | null } | null } | undefined>;
+  relayMessage(
+    jid: string,
+    message: unknown,
+    options: {
+      messageId: string;
+      additionalNodes?: { tag: string; attrs?: Record<string, string> }[];
+    },
+  ): Promise<string>;
   onWhatsApp(
     ...phones: string[]
   ): Promise<{ jid: string; exists: boolean }[] | undefined>;
@@ -91,6 +129,19 @@ type BaileysModule = {
     saveCreds: () => Promise<void>;
   }>;
   DisconnectReason: { loggedOut: number };
+  proto: {
+    Message: {
+      create: (payload: unknown) => unknown;
+    };
+  };
+  generateWAMessageFromContent: (
+    jid: string,
+    message: unknown,
+    options: { userJid: string; timestamp?: Date },
+  ) => {
+    key?: { id?: string | null } | null;
+    message?: unknown;
+  };
 };
 
 type QrCodeModule = {
@@ -100,11 +151,29 @@ type QrCodeModule = {
 
 /** How long a QR socket stays up after the last "still connecting" ping. */
 const PAIRING_LEASE_MS = 35_000;
+/** Wait after the last poll tap before treating multi-select as final. */
+const MULTI_POLL_SETTLE_MS = 1_600;
+
+type PendingMultiPollVote = {
+  timer: ReturnType<typeof setTimeout>;
+  phoneNumber: string;
+  jid: string;
+  pollMsgId: string;
+  voteMessage: BaileysInboundMessage;
+  optionIds: string[];
+  raw: unknown;
+};
 
 type SessionRecord = {
   tenantId: string;
   sock: BaileysSocket | null;
   jids: Map<string, string>;
+  lidByPhone: Map<string, string>;
+  pollChoicesByPhone: Map<string, BaileysPollChoice[]>;
+  pollsByMessageId: Map<string, StoredBaileysPoll>;
+  pendingMultiPollVotes: Map<string, PendingMultiPollVote>;
+  settledMultiPollVotes: Set<string>;
+  meLid: string | null;
   status: BaileysSessionStatus;
   qrDataUrl: string | null;
   qrVersion: number;
@@ -308,8 +377,15 @@ export class BaileysWhatsappClient
     }
 
     const jid = await this.resolveJid(session, sock, to);
+    this.logger.log(
+      `Baileys sendText tenant=${session.tenantId} to=${to} jid=${jid} jidKind=${jidAddressingKind(jid)} chars=${body.length} preview=${previewBaileysText(body)}`,
+    );
     const sent = await sock.sendMessage(jid, { text: body });
-    return { messageId: sent?.key?.id ?? null, raw: sent ?? null };
+    const messageId = sent?.key?.id ?? null;
+    this.logger.log(
+      `Baileys sendText ok tenant=${session.tenantId} to=${to} messageId=${messageId ?? 'none'}`,
+    );
+    return { messageId, raw: sent ?? null };
   }
 
   async sendList(
@@ -326,9 +402,123 @@ export class BaileysWhatsappClient
       );
     }
 
-    const jid = await this.resolveJid(session, sock, to);
-    const sent = await sock.sendMessage(jid, toBaileysListSendContent(list));
-    return { messageId: sent?.key?.id ?? null, raw: sent ?? null };
+    const wireFormat = resolveBaileysListWireFormat(this.config);
+    let jid = await this.resolveJid(session, sock, to);
+    const digits = toDigits(to);
+    if (wireFormat === 'native_flow') {
+      const lid = session.lidByPhone.get(digits);
+      if (lid) {
+        jid = lid;
+      }
+    }
+    const listSummary = summarizeBaileysList(list);
+    this.logger.log(
+      `Baileys sendList start tenant=${session.tenantId} to=${to} jid=${jid} jidKind=${jidAddressingKind(jid)} wireFormat=${wireFormat} ${JSON.stringify(listSummary)} bodyPreview=${previewBaileysText(list.text)}`,
+    );
+    if (listSummary.bodyLen === 0) {
+      this.logger.warn(
+        `Baileys sendList has empty list body tenant=${session.tenantId} to=${to}`,
+      );
+    }
+
+    if (wireFormat === 'poll') {
+      const pollSecret = randomBytes(32);
+      const pollContent = {
+        poll: {
+          ...buildBaileysPollSendContent(list).poll,
+          messageSecret: pollSecret,
+        },
+      };
+      const choices = listSpecToPollChoices(list);
+      session.pollChoicesByPhone.set(digits, choices);
+      this.logger.log(
+        `Baileys sendPoll tenant=${session.tenantId} to=${to} jid=${jid} options=${choices.length}`,
+      );
+      const sent = await sock.sendMessage(jid, pollContent);
+      const messageId = sent?.key?.id ?? null;
+      const meId = await this.baileysMeJid(sock);
+      const pollSelectableCount =
+        buildBaileysPollSendContent(list).poll.selectableCount;
+      const storedPoll = extractStoredPollFromSent(
+        sent,
+        choices,
+        digits,
+        meId,
+        pollSelectableCount,
+      );
+      if (storedPoll) {
+        storedPoll.pollEncKey = pollSecret;
+        storedPoll.pollSelectableCount = pollSelectableCount;
+      }
+      if (messageId && storedPoll) {
+        session.pollsByMessageId.set(messageId, storedPoll);
+      } else if (messageId) {
+        this.logger.warn(
+          `Baileys sendPoll missing encryption context tenant=${session.tenantId} messageId=${messageId}`,
+        );
+      }
+      this.logger.log(
+        `Baileys sendPoll ok tenant=${session.tenantId} to=${to} messageId=${messageId ?? 'none'}`,
+      );
+      return { messageId, raw: sent ?? null };
+    }
+
+    const baileys = (await import('@whiskeysockets/baileys')) as BaileysModule;
+    const userJid = sock.user?.id?.trim();
+    if (!userJid) {
+      throw new Error(
+        `Baileys session has no linked user jid tenant=${session.tenantId}`,
+      );
+    }
+    const messageSecret = randomBytes(32);
+    const listProto = buildBaileysListWaPayload(
+      list,
+      wireFormat,
+      messageSecret,
+    );
+    if (isBaileysDebug(this.config)) {
+      this.logger.debug(
+        `Baileys sendList proto tenant=${session.tenantId} ${JSON.stringify(listProto)}`,
+      );
+    }
+    const waMessage = baileys.proto.Message.create(listProto);
+    const fullMsg = baileys.generateWAMessageFromContent(jid, waMessage, {
+      userJid,
+      timestamp: new Date(),
+    });
+    const messageId = fullMsg.key?.id ?? null;
+    const contentKeys =
+      fullMsg.message && typeof fullMsg.message === 'object'
+        ? Object.keys(fullMsg.message as object).join(',')
+        : 'none';
+    if (!messageId || !fullMsg.message) {
+      throw new Error(
+        `Baileys failed to build list message contentKeys=${contentKeys}`,
+      );
+    }
+    if (isBaileysDebug(this.config)) {
+      this.logger.debug(
+        `Baileys sendList relay tenant=${session.tenantId} messageId=${messageId} contentKeys=${contentKeys}`,
+      );
+    }
+    const additionalNodes = baileysListRelayAdditionalNodes(wireFormat);
+    try {
+      await sock.relayMessage(jid, fullMsg.message, {
+        messageId,
+        ...(additionalNodes ? { additionalNodes } : {}),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Baileys sendList relay failed tenant=${session.tenantId} to=${to} messageId=${messageId}: ${
+          error instanceof Error ? error.stack ?? error.message : String(error)
+        }`,
+      );
+      throw error;
+    }
+    this.logger.log(
+      `Baileys sendList ok tenant=${session.tenantId} to=${to} messageId=${messageId} contentKeys=${contentKeys}`,
+    );
+    return { messageId, raw: fullMsg };
   }
 
   private ensureSession(tenantId: string): SessionRecord {
@@ -340,6 +530,12 @@ export class BaileysWhatsappClient
       tenantId,
       sock: null,
       jids: new Map(),
+      lidByPhone: new Map(),
+      pollChoicesByPhone: new Map(),
+      pollsByMessageId: new Map(),
+      pendingMultiPollVotes: new Map(),
+      settledMultiPollVotes: new Set(),
+      meLid: null,
       status: 'waiting_for_scan',
       qrDataUrl: null,
       qrVersion: 0,
@@ -515,17 +711,19 @@ export class BaileysWhatsappClient
 
     const digits = toDigits(to);
     const remembered = session.jids.get(digits);
-    if (remembered) {
-      return remembered;
-    }
-
     const matches = await sock.onWhatsApp(digits);
-    const found = matches?.find((match) => match.exists)?.jid;
+    const found = pickOutboundRecipientJid(remembered, matches);
     if (!found) {
       throw new Error(`No WhatsApp account for ${digits}`);
     }
-    session.jids.set(digits, found);
-    return found;
+    if (found !== remembered) {
+      this.logger.log(
+        `Baileys resolveJid tenant=${session.tenantId} to=${digits} remembered=${remembered ?? 'none'}(${remembered ? jidAddressingKind(remembered) : 'n/a'}) using=${found}(${jidAddressingKind(found)})`,
+      );
+    }
+    const normalized = normalizeWhatsAppUserJid(found);
+    session.jids.set(digits, normalized);
+    return normalized;
   }
 
   private async connect(session: SessionRecord): Promise<void> {
@@ -540,6 +738,7 @@ export class BaileysWhatsappClient
     const { state, saveCreds } = await baileys.useMultiFileAuthState(
       this.authDir(session.tenantId),
     );
+    session.meLid = readBaileysMeLid(state);
     const sock = baileys.default({
       auth: state,
       logger: pinoModule.default({ level: 'warn' }),
@@ -551,6 +750,7 @@ export class BaileysWhatsappClient
     session.sock = sock;
     this.logger.log(`Starting Baileys session tenant=${session.tenantId}`);
     sock.ev.on('creds.update', () => {
+      session.meLid = readBaileysMeLid(state);
       void saveCreds();
       void this.saveLinkedPhone(session);
     });
@@ -628,39 +828,270 @@ export class BaileysWhatsappClient
     reconnect();
   }
 
+  private async baileysMeJid(sock: BaileysSocket | null | undefined): Promise<string> {
+    const raw = sock?.user?.id?.trim() ?? '';
+    if (!raw) {
+      return '';
+    }
+    try {
+      const jidUtils = (await import(
+        '@whiskeysockets/baileys/lib/WABinary/jid-utils.js'
+      )) as { jidNormalizedUser: (jid: string | undefined) => string };
+      return jidUtils.jidNormalizedUser(raw) || normalizeWhatsAppUserJid(raw);
+    } catch {
+      return normalizeWhatsAppUserJid(raw);
+    }
+  }
+
+  private async parseBaileysPollVote(
+    session: SessionRecord,
+    message: BaileysInboundMessage,
+  ): Promise<ParsedBaileysText | null> {
+    if (message.key?.fromMe) {
+      return null;
+    }
+    const pollMsgId = pollCreationMessageId(message);
+    if (!pollMsgId) {
+      return null;
+    }
+    const stored = session.pollsByMessageId.get(pollMsgId);
+    if (!stored) {
+      this.logger.warn(
+        `Baileys poll vote unknown poll tenant=${session.tenantId} pollMsgId=${pollMsgId}`,
+      );
+      return null;
+    }
+    const sock = session.sock;
+    const meId = await this.baileysMeJid(sock);
+    let voteMessage = message;
+    const inboundRemote = message.key?.remoteJid?.trim() ?? '';
+    if (
+      isWhatsappLidJid(inboundRemote) &&
+      !message.key?.remoteJidAlt?.trim() &&
+      sock?.signalRepository?.lidMapping
+    ) {
+      const pn = await sock.signalRepository.lidMapping.getPNForLID(
+        inboundRemote,
+      );
+      if (pn?.trim()) {
+        voteMessage = {
+          ...message,
+          key: {
+            ...message.key,
+            remoteJidAlt: normalizeWhatsAppUserJid(pn.trim()),
+          },
+        };
+      }
+    }
+    const { optionId, lastError } = await resolvePollVoteOptionId(
+      voteMessage,
+      stored,
+      meId,
+      { meLid: session.meLid },
+    );
+    if (!optionId) {
+      this.logger.warn(
+        `Baileys poll vote decrypt failed tenant=${session.tenantId} pollMsgId=${pollMsgId} reason=${lastError ?? 'unknown'} remoteJid=${message.key?.remoteJid ?? '?'} remoteJidAlt=${message.key?.remoteJidAlt ?? 'none'}`,
+      );
+      return null;
+    }
+    const remoteJid = message.key?.remoteJid?.trim() ?? '';
+    if (!remoteJid) {
+      return null;
+    }
+    const phoneNumber = stored.phoneDigits || toDigits(remoteJid);
+    const selectableCount = stored.pollSelectableCount ?? 1;
+    if (selectableCount > 1) {
+      const settleKey = multiSelectPollKey(phoneNumber, pollMsgId);
+      if (session.settledMultiPollVotes.has(settleKey)) {
+        this.logger.debug(
+          `Baileys poll vote ignored (already settled) tenant=${session.tenantId} key=${settleKey}`,
+        );
+        return null;
+      }
+      this.scheduleMultiSelectPollVote(session, settleKey, {
+        phoneNumber,
+        jid: remoteJid,
+        pollMsgId,
+        voteMessage,
+        optionIds: optionId.split(',').map((id) => id.trim()).filter(Boolean),
+      });
+      this.logger.log(
+        `Baileys poll vote buffered tenant=${session.tenantId} from=${phoneNumber} pollMsgId=${pollMsgId} preview=${previewBaileysText(optionId, 80)}`,
+      );
+      return null;
+    }
+    this.logger.log(
+      `Baileys poll vote tenant=${session.tenantId} from=${phoneNumber} pollMsgId=${pollMsgId} optionId=${optionId}`,
+    );
+    return { phoneNumber, text: optionId, jid: remoteJid };
+  }
+
+  private scheduleMultiSelectPollVote(
+    session: SessionRecord,
+    settleKey: string,
+    pending: {
+      phoneNumber: string;
+      jid: string;
+      pollMsgId: string;
+      voteMessage: BaileysInboundMessage;
+      optionIds: string[];
+    },
+  ): void {
+    const existing = session.pendingMultiPollVotes.get(settleKey);
+    if (existing) {
+      clearTimeout(existing.timer);
+    }
+    const optionIds = mergePollOptionIds(
+      existing?.optionIds ?? [],
+      pending.optionIds,
+    );
+    const timer = setTimeout(() => {
+      void this.flushMultiSelectPollVote(session, settleKey);
+    }, MULTI_POLL_SETTLE_MS);
+    session.pendingMultiPollVotes.set(settleKey, {
+      timer,
+      phoneNumber: pending.phoneNumber,
+      jid: pending.jid,
+      pollMsgId: pending.pollMsgId,
+      voteMessage: pending.voteMessage,
+      optionIds,
+      raw: pending.voteMessage,
+    });
+  }
+
+  private async flushMultiSelectPollVote(
+    session: SessionRecord,
+    settleKey: string,
+  ): Promise<void> {
+    const pending = session.pendingMultiPollVotes.get(settleKey);
+    session.pendingMultiPollVotes.delete(settleKey);
+    if (!pending || !this.inboundHandler) {
+      return;
+    }
+    if (session.settledMultiPollVotes.has(settleKey)) {
+      return;
+    }
+    const stored = session.pollsByMessageId.get(pending.pollMsgId);
+    if (!stored) {
+      this.logger.warn(
+        `Baileys multi poll flush missing poll tenant=${session.tenantId} pollMsgId=${pending.pollMsgId}`,
+      );
+      return;
+    }
+    const meId = await this.baileysMeJid(session.sock);
+    const { optionId, lastError } = await resolvePollVoteOptionId(
+      pending.voteMessage,
+      stored,
+      meId,
+      { meLid: session.meLid },
+    );
+    const fromLatest = optionId
+      ? optionId.split(',').map((id) => id.trim()).filter(Boolean)
+      : [];
+    const finalIds = mergePollOptionIds(pending.optionIds, fromLatest);
+    if (finalIds.length === 0) {
+      this.logger.warn(
+        `Baileys multi poll flush empty tenant=${session.tenantId} pollMsgId=${pending.pollMsgId} reason=${lastError ?? 'unknown'}`,
+      );
+      return;
+    }
+    const inboundText = finalIds.join(',');
+    session.settledMultiPollVotes.add(settleKey);
+    this.logger.log(
+      `Baileys multi poll vote tenant=${session.tenantId} from=${pending.phoneNumber} pollMsgId=${pending.pollMsgId} optionId=${inboundText}`,
+    );
+    try {
+      await this.inboundHandler({
+        tenantId: session.tenantId,
+        phoneNumber: pending.phoneNumber,
+        text: inboundText,
+        raw: pending.raw,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Baileys multi poll inbound failed tenant=${session.tenantId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   private async onMessages(
     session: SessionRecord,
     messages: BaileysInboundMessage[],
   ): Promise<void> {
     const sock = session.sock;
     for (const message of messages) {
-      const parsed = parseBaileysTextMessage(message);
-      if (!parsed || !this.inboundHandler) {
+      let parsed = parseBaileysTextMessage(message);
+      if (!parsed && hasBaileysPollUpdate(message)) {
+        parsed = await this.parseBaileysPollVote(session, message);
+      }
+      if (!parsed) {
+        if (
+          isBaileysDebug(this.config) &&
+          !message.key?.fromMe &&
+          message.message
+        ) {
+          this.logger.debug(
+            `Baileys inbound not parsed tenant=${session.tenantId} jid=${message.key?.remoteJid ?? '?'} keys=${baileysInboundPayloadKeys(message)}`,
+          );
+        }
         continue;
       }
+      if (!this.inboundHandler) {
+        this.logger.warn(
+          `Baileys inbound dropped (no handler) tenant=${session.tenantId} from=${parsed.phoneNumber}`,
+        );
+        continue;
+      }
+      this.logger.log(
+        `Baileys inbound tenant=${session.tenantId} from=${parsed.phoneNumber} jid=${parsed.jid} text=${previewBaileysText(parsed.text, 80)}`,
+      );
       let phoneNumber = parsed.phoneNumber;
-      if (isLidProspectKey(phoneNumber) && sock?.signalRepository?.lidMapping) {
+      let cacheJid = parsed.jid;
+      if (
+        (isWhatsappLidJid(parsed.jid) || isLidProspectKey(phoneNumber)) &&
+        sock?.signalRepository?.lidMapping
+      ) {
         const pn = await sock.signalRepository.lidMapping.getPNForLID(
           parsed.jid,
         );
         const digits = pn ? phoneDigitsFromJid(pn) : '';
-        if (digits) {
+        if (pn && digits && !isWhatsappLidJid(pn)) {
           phoneNumber = digits;
-        } else {
+          cacheJid = pn;
+        } else if (isWhatsappLidJid(parsed.jid)) {
           this.logger.debug(
             `Baileys inbound LID without phone mapping tenant=${session.tenantId} jid=${parsed.jid}`,
           );
         }
       }
-      session.jids.set(phoneNumber, parsed.jid);
+      const outboundJid = isWhatsappLidJid(cacheJid)
+        ? cacheJid
+        : normalizeWhatsAppUserJid(cacheJid);
+      session.jids.set(phoneNumber, outboundJid);
+      if (isWhatsappLidJid(parsed.jid)) {
+        session.lidByPhone.set(phoneNumber, parsed.jid);
+      }
       if (phoneNumber !== parsed.phoneNumber) {
-        session.jids.set(parsed.phoneNumber, parsed.jid);
+        session.jids.set(parsed.phoneNumber, outboundJid);
+      }
+      const pollChoice = pollSelectionToOptionId(
+        parsed.text,
+        session.pollChoicesByPhone.get(phoneNumber) ?? [],
+      );
+      const inboundText = pollChoice ?? parsed.text;
+      if (isBaileysDebug(this.config)) {
+        this.logger.debug(
+          `Baileys inbound jid cache tenant=${session.tenantId} phone=${phoneNumber} cacheJid=${cacheJid}(${jidAddressingKind(cacheJid)})`,
+        );
       }
       try {
         await this.inboundHandler({
           tenantId: session.tenantId,
           phoneNumber,
-          text: parsed.text,
+          text: inboundText,
           raw: message,
         });
       } catch (error) {
@@ -752,6 +1183,30 @@ export class BaileysWhatsappClient
     );
     qrcode.generate?.(qr, { small: true });
   }
+}
+
+function mergePollOptionIds(
+  previous: readonly string[],
+  incoming: readonly string[],
+): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const id of [...previous, ...incoming]) {
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    merged.push(trimmed);
+  }
+  return merged;
+}
+
+function readBaileysMeLid(state: unknown): string | null {
+  const lid = (state as { creds?: { me?: { lid?: string | null } } })?.creds
+    ?.me?.lid;
+  const trimmed = lid?.trim() ?? '';
+  return trimmed || null;
 }
 
 function disconnectStatus(error: unknown): number | undefined {

@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
+import { TelnyxWhatsappClient } from './telnyx-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -15,6 +16,11 @@ describe('WhatsappSendRouter', () => {
     isConfigured: jest.fn(),
     sendText: jest.fn(),
     sendContent: jest.fn(),
+  };
+  const telnyx = {
+    channel: 'telnyx' as const,
+    isConfigured: jest.fn(),
+    sendText: jest.fn(),
   };
   const baileys = {
     channel: 'baileys' as const,
@@ -31,6 +37,7 @@ describe('WhatsappSendRouter', () => {
       config as unknown as ConfigService,
       meta as unknown as MetaWhatsappClient,
       twilio as unknown as TwilioWhatsappClient,
+      telnyx as unknown as TelnyxWhatsappClient,
       baileys as unknown as BaileysWhatsappClient,
     );
   }
@@ -41,16 +48,20 @@ describe('WhatsappSendRouter', () => {
     twilio.isConfigured.mockReset();
     twilio.sendText.mockReset();
     twilio.sendContent.mockReset();
+    telnyx.isConfigured.mockReset();
+    telnyx.sendText.mockReset();
     baileys.isConfigured.mockReset();
     baileys.sendText.mockReset();
     env.WHATSAPP_SEND_FAILOVER = undefined;
     env.WHATSAPP_PRIMARY_CHANNEL = undefined;
     meta.isConfigured.mockReturnValue(true);
     twilio.isConfigured.mockReturnValue(true);
+    telnyx.isConfigured.mockReturnValue(false);
     baileys.isConfigured.mockReturnValue(false);
     meta.sendText.mockResolvedValue({ messageId: 'wamid.1', raw: {} });
     twilio.sendText.mockResolvedValue({ messageId: 'SM1', raw: {} });
     twilio.sendContent.mockResolvedValue({ messageId: 'SM2', raw: {} });
+    telnyx.sendText.mockResolvedValue({ messageId: 'TN1', raw: {} });
     baileys.sendText.mockResolvedValue({ messageId: 'BA1', raw: {} });
   });
 
@@ -77,6 +88,21 @@ describe('WhatsappSendRouter', () => {
       raw: {},
     });
     expect(meta.sendText).toHaveBeenCalled();
+    expect(twilio.sendText).not.toHaveBeenCalled();
+  });
+
+  it('uses Telnyx first when WHATSAPP_PRIMARY_CHANNEL=telnyx', async () => {
+    env.WHATSAPP_PRIMARY_CHANNEL = 'telnyx';
+    telnyx.isConfigured.mockReturnValue(true);
+
+    await expect(
+      createRouter().sendText('254711111111', 'hi'),
+    ).resolves.toEqual({
+      channel: 'telnyx',
+      messageId: 'TN1',
+      raw: {},
+    });
+    expect(telnyx.sendText).toHaveBeenCalled();
     expect(twilio.sendText).not.toHaveBeenCalled();
   });
 
@@ -181,13 +207,18 @@ describe('WhatsappSendRouter', () => {
       messageId: 'SM2',
       raw: {},
     });
-    expect(twilio.sendContent).toHaveBeenCalledWith('254711111111', 'HXevent');
+    expect(twilio.sendContent).toHaveBeenCalledWith(
+      '254711111111',
+      'HXevent',
+      undefined,
+    );
     expect(twilio.sendText).not.toHaveBeenCalled();
   });
 
   it('throws when no provider is configured', async () => {
     meta.isConfigured.mockReturnValue(false);
     twilio.isConfigured.mockReturnValue(false);
+    telnyx.isConfigured.mockReturnValue(false);
     baileys.isConfigured.mockReturnValue(false);
 
     await expect(createRouter().sendText('254711111111', 'hi')).rejects.toThrow(

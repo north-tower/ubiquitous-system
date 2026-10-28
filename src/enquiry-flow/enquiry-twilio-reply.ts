@@ -29,6 +29,8 @@ export const ENQUIRY_STEP_TWILIO_CONTENT: Partial<
 export type EnquiryReply = {
   replyText: string;
   silent?: boolean;
+  /** Plain messages sent before replyText (e.g. ack after a poll tap). */
+  prefaceTexts?: string[];
   twilioContent?: EnquiryTwilioContentKey;
   /** Twilio ContentVariables JSON keys (e.g. "1" for {{1}} in confirm templates). */
   twilioContentVariables?: Record<string, string>;

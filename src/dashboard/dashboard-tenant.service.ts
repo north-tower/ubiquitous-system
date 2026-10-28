@@ -97,7 +97,10 @@ export class DashboardTenantService {
 
   async delete(id: string): Promise<{ ok: true }> {
     const tenant = await this.requireTenant(id);
-    if (tenant.primaryChannel !== 'twilio') {
+    if (
+      tenant.primaryChannel !== 'twilio' &&
+      tenant.primaryChannel !== 'telnyx'
+    ) {
       await this.baileys.dropTenant(id);
     }
     const removed = await this.tenants.deleteById(id);
@@ -152,9 +155,9 @@ export class DashboardTenantService {
   private assertBaileysPrimary(
     primaryChannel: string | null | undefined,
   ): void {
-    if (primaryChannel === 'twilio') {
+    if (primaryChannel === 'twilio' || primaryChannel === 'telnyx') {
       throw new BadRequestException(
-        'This tenant uses Twilio. QR pairing is only for Baileys tenants.',
+        'This tenant uses a hosted WhatsApp provider. QR pairing is only for Baileys tenants.',
       );
     }
   }

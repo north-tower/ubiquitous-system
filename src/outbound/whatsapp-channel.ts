@@ -1,4 +1,4 @@
-export type WhatsappChannel = 'meta' | 'twilio' | 'baileys';
+export type WhatsappChannel = 'meta' | 'twilio' | 'telnyx' | 'baileys';
 
 export type WhatsappSendResult = {
   channel: WhatsappChannel;

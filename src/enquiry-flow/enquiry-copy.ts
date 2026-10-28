@@ -71,6 +71,26 @@ export const REASK_RETURNING = [
 
 export const ASK_DATE = `When is it? 📅 (${PROGRESS.date})`;
 
+/** After poll/list pick — short ack before the next step. */
+export function ackEventTypeChoice(eventLabel: string): string {
+  const label = eventLabel.trim() || 'that';
+  return `Got it — *${label}*. Sounds good!`;
+}
+
+export function ackServicesChoice(serviceLabels: string): string {
+  const labels = serviceLabels.trim() || 'those services';
+  return `Got it — *${labels}*.`;
+}
+
+export function ackBudgetChoice(budgetLabel: string): string {
+  const label = budgetLabel.trim() || 'that range';
+  return `Got it — budget *${label}*.`;
+}
+
+export function ackBudgetSkipped(): string {
+  return 'No problem — we can firm up budget later.';
+}
+
 export const ASK_SERVICES = [
   `What would you like us to handle? You can pick more than one — e.g. *1, 2* or *sound and lighting*. (${PROGRESS.services})`,
   serviceList(),

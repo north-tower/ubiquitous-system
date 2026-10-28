@@ -23,6 +23,7 @@ import {
 } from './tenant-flow';
 
 const TWILIO_PHONE_NUMBER_PLACEHOLDER = 'twilio';
+const TELNYX_PHONE_NUMBER_PLACEHOLDER = 'telnyx';
 const BAILEYS_PHONE_NUMBER_PLACEHOLDER = 'baileys';
 
 @Injectable()
@@ -58,6 +59,16 @@ export class TenantService implements OnModuleInit {
   async findOldestTwilioPrimary(): Promise<Tenant | null> {
     const [tenant] = await this.tenants.find({
       where: { primaryChannel: 'twilio' },
+      order: { createdAt: 'ASC' },
+      take: 1,
+    });
+    return tenant ?? null;
+  }
+
+  /** Oldest tenant created with Telnyx as the primary WhatsApp channel. */
+  async findOldestTelnyxPrimary(): Promise<Tenant | null> {
+    const [tenant] = await this.tenants.find({
+      where: { primaryChannel: 'telnyx' },
       order: { createdAt: 'ASC' },
       take: 1,
     });
@@ -147,6 +158,18 @@ export class TenantService implements OnModuleInit {
       }
       return;
     }
+    if (channel === 'telnyx') {
+      const ready = Boolean(
+        this.config.get<string>('TELNYX_API_KEY') &&
+          this.config.get<string>('TELNYX_WHATSAPP_FROM'),
+      );
+      if (!ready) {
+        throw new BadRequestException(
+          'Telnyx WhatsApp is not configured on this server',
+        );
+      }
+      return;
+    }
     if (this.config.get<string>('BAILEYS_ENABLED') !== 'true') {
       throw new BadRequestException('Baileys is not enabled on this server');
     }
@@ -156,6 +179,9 @@ export class TenantService implements OnModuleInit {
     const configured = this.config.get<string>('WHATSAPP_PRIMARY_CHANNEL');
     if (configured === 'twilio') {
       return 'twilio';
+    }
+    if (configured === 'telnyx') {
+      return 'telnyx';
     }
     return DEFAULT_TENANT_PRIMARY_CHANNEL;
   }
@@ -171,14 +197,19 @@ export class TenantService implements OnModuleInit {
       this.config.get<string>('TWILIO_AUTH_TOKEN') &&
       this.config.get<string>('TWILIO_WHATSAPP_FROM'),
     );
+    const telnyxReady = Boolean(
+      this.config.get<string>('TELNYX_API_KEY') &&
+        this.config.get<string>('TELNYX_WHATSAPP_FROM'),
+    );
     const baileysReady = this.config.get<string>('BAILEYS_ENABLED') === 'true';
     const whatsappPhoneNumberId =
       metaPhoneNumberId ||
       (twilioReady ? TWILIO_PHONE_NUMBER_PLACEHOLDER : null) ||
+      (telnyxReady ? TELNYX_PHONE_NUMBER_PLACEHOLDER : null) ||
       (baileysReady ? BAILEYS_PHONE_NUMBER_PLACEHOLDER : null);
     if (!whatsappPhoneNumberId) {
       this.logger.warn(
-        'Neither META_PHONE_NUMBER_ID, Twilio credentials, nor BAILEYS_ENABLED are set; Techfind tenant will not be seeded',
+        'Neither META_PHONE_NUMBER_ID, Twilio/Telnyx credentials, nor BAILEYS_ENABLED are set; Techfind tenant will not be seeded',
       );
       return null;
     }
@@ -228,6 +259,12 @@ export class TenantService implements OnModuleInit {
     });
     if (byTwilio) {
       return byTwilio;
+    }
+    const byTelnyx = await this.tenants.findOne({
+      where: { whatsappPhoneNumberId: TELNYX_PHONE_NUMBER_PLACEHOLDER },
+    });
+    if (byTelnyx) {
+      return byTelnyx;
     }
     return this.tenants.findOne({
       where: { whatsappPhoneNumberId: BAILEYS_PHONE_NUMBER_PLACEHOLDER },

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
+import { TelnyxWhatsappClient } from './telnyx-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import {
   type WhatsappChannel,
@@ -16,6 +17,7 @@ export class WhatsappSendRouter {
     private readonly config: ConfigService,
     private readonly meta: MetaWhatsappClient,
     private readonly twilio: TwilioWhatsappClient,
+    private readonly telnyx: TelnyxWhatsappClient,
     private readonly baileys: BaileysWhatsappClient,
   ) {}
 
@@ -34,7 +36,7 @@ export class WhatsappSendRouter {
     const order = this.order(preferred);
     if (order.length === 0) {
       throw new Error(
-        'No WhatsApp provider is configured. Set Baileys, Meta, or Twilio credentials.',
+        'No WhatsApp provider is configured. Set Baileys, Meta, Twilio, or Telnyx credentials.',
       );
     }
 
@@ -115,19 +117,33 @@ export class WhatsappSendRouter {
   }
 
   private senders(): WhatsappSender[] {
-    const primary = this.primaryChannel();
-    if (primary === 'baileys') {
-      return [this.baileys, this.meta, this.twilio];
-    }
-    if (primary === 'meta') {
-      return [this.meta, this.twilio, this.baileys];
-    }
-    return [this.twilio, this.meta, this.baileys];
+    const order: WhatsappChannel[] =
+      this.primaryChannel() === 'baileys'
+        ? ['baileys', 'meta', 'twilio', 'telnyx']
+        : this.primaryChannel() === 'meta'
+          ? ['meta', 'twilio', 'telnyx', 'baileys']
+          : this.primaryChannel() === 'telnyx'
+            ? ['telnyx', 'twilio', 'meta', 'baileys']
+            : ['twilio', 'telnyx', 'meta', 'baileys'];
+    const byChannel = new Map(
+      this.allSenders().map((sender) => [sender.channel, sender]),
+    );
+    return order
+      .map((channel) => byChannel.get(channel))
+      .filter((sender): sender is WhatsappSender => sender !== undefined);
+  }
+
+  private allSenders(): WhatsappSender[] {
+    return [this.baileys, this.meta, this.twilio, this.telnyx];
   }
 
   private primaryChannel(): WhatsappChannel {
     const configured = this.config.get<string>('WHATSAPP_PRIMARY_CHANNEL');
-    if (configured === 'meta' || configured === 'baileys') {
+    if (
+      configured === 'meta' ||
+      configured === 'baileys' ||
+      configured === 'telnyx'
+    ) {
       return configured;
     }
     return 'twilio';

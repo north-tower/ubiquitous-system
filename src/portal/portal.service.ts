@@ -89,9 +89,9 @@ export class PortalService {
   private assertBaileysPrimary(
     primaryChannel: string | null | undefined,
   ): void {
-    if (primaryChannel === 'twilio') {
+    if (primaryChannel === 'twilio' || primaryChannel === 'telnyx') {
       throw new BadRequestException(
-        'This tenant uses Twilio. QR pairing is only for Baileys tenants.',
+        'This tenant uses a hosted WhatsApp provider. QR pairing is only for Baileys tenants.',
       );
     }
   }
