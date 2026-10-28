@@ -12,9 +12,9 @@ export class TelnyxWebhookController {
   @Post()
   async receive(@Body() body: unknown, @Res() res: Response): Promise<void> {
     res.status(200).json({ received: true });
-    this.logger.log(
-      `Telnyx webhook POST event_type=${readTelnyxWebhookEventType(body) ?? 'unknown'}`,
-    );
+    const eventType = readTelnyxWebhookEventType(body) ?? 'unknown';
+    this.logger.log(`Telnyx webhook POST event_type=${eventType}`);
+    this.logger.debug(`Telnyx webhook body=${JSON.stringify(body, null, 2)}`);
     try {
       await this.webhook.handleTelnyxInbound(body);
     } catch (error) {

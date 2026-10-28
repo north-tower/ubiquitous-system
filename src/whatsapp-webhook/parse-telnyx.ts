@@ -120,7 +120,10 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
     if (!isRecord(payload)) {
       return true;
     }
-    return parseInboundWebhook(payload).length === 0;
+    if (parseInboundWebhook(payload).length > 0) {
+      return false;
+    }
+    return parseTelnyxWhatsappPayloadRecord(payload) === null;
   }
   if (eventType !== 'message.received') {
     return true;
@@ -142,6 +145,38 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
     return true;
   }
   return false;
+}
+
+function parseTelnyxWhatsappPayloadRecord(
+  payload: Record<string, unknown>,
+): ParsedTelnyxInbound | null {
+  if (!isWhatsappPayload(payload)) {
+    return null;
+  }
+
+  const direction =
+    typeof payload.direction === 'string'
+      ? payload.direction.toLowerCase()
+      : 'inbound';
+  if (direction !== 'inbound') {
+    return null;
+  }
+
+  const waId = readInboundSender(payload);
+  if (!waId) {
+    return null;
+  }
+
+  const messageId =
+    typeof payload.id === 'string' && payload.id.length > 0 ? payload.id : null;
+
+  return {
+    waId,
+    phoneNumber: waId,
+    text: readInboundText(payload),
+    messageId,
+    raw: payload,
+  };
 }
 
 function parseTelnyxWabaMessages(body: Record<string, unknown>): ParsedTelnyxInbound | null {
@@ -257,6 +292,28 @@ function readInboundText(payload: Record<string, unknown>): string | null {
   return null;
 }
 
+function parseTelnyxNativeWhatsappEvent(
+  body: Record<string, unknown>,
+): ParsedTelnyxInbound | null {
+  const data = body.data;
+  if (!isRecord(data)) {
+    return null;
+  }
+  const eventType = data.event_type;
+  if (eventType !== 'message.received' && eventType !== 'whatsapp.messages') {
+    return null;
+  }
+  const payload = data.payload;
+  if (!isRecord(payload)) {
+    return null;
+  }
+  const parsed = parseTelnyxWhatsappPayloadRecord(payload);
+  if (!parsed) {
+    return null;
+  }
+  return { ...parsed, raw: body };
+}
+
 export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
   if (!isRecord(body)) {
     return null;
@@ -265,40 +322,5 @@ export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
   if (waba) {
     return waba;
   }
-  const data = body.data;
-  if (!isRecord(data) || data.event_type !== 'message.received') {
-    return null;
-  }
-  const payload = data.payload;
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  if (!isWhatsappPayload(payload)) {
-    return null;
-  }
-
-  const direction =
-    typeof payload.direction === 'string'
-      ? payload.direction.toLowerCase()
-      : 'inbound';
-  if (direction !== 'inbound') {
-    return null;
-  }
-
-  const waId = readInboundSender(payload);
-  if (!waId) {
-    return null;
-  }
-
-  const messageId =
-    typeof payload.id === 'string' && payload.id.length > 0 ? payload.id : null;
-
-  return {
-    waId,
-    phoneNumber: waId,
-    text: readInboundText(payload),
-    messageId,
-    raw: body,
-  };
+  return parseTelnyxNativeWhatsappEvent(body);
 }

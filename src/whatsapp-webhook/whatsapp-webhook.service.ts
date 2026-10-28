@@ -28,6 +28,7 @@ import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
 import {
   parseTelnyxWebhook,
+  readTelnyxWebhookEventType,
   shouldSilentlyIgnoreTelnyxWebhook,
   summarizeTelnyxWebhook,
 } from './parse-telnyx';
@@ -143,9 +144,26 @@ export class WhatsappWebhookService implements OnModuleInit {
   }
 
   async handleTelnyxInbound(body: unknown): Promise<void> {
+    const eventType = readTelnyxWebhookEventType(body);
+
     if (shouldSilentlyIgnoreTelnyxWebhook(body)) {
+      if (eventType === 'whatsapp.messages') {
+        this.logger.log(
+          `Telnyx whatsapp.messages skipped (${summarizeTelnyxWebhook(body)})`,
+        );
+      }
       return;
     }
+
+    switch (eventType) {
+      case 'whatsapp.messages':
+      case 'message.received':
+        break;
+      default:
+        this.logger.warn(`Unhandled Telnyx event: ${eventType ?? 'unknown'}`);
+        return;
+    }
+
     const parsed = parseTelnyxWebhook(body);
     if (!parsed) {
       this.logger.warn(

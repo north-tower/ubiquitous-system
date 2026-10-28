@@ -181,6 +181,33 @@ describe('shouldSilentlyIgnoreTelnyxWebhook', () => {
 });
 
 describe('parseTelnyxWebhook WABA', () => {
+  it('normalizes whatsapp.messages using the Telnyx message.received payload shape', () => {
+    expect(
+      parseTelnyxWebhook({
+        data: {
+          event_type: 'whatsapp.messages',
+          payload: SAMPLE_TELNYX_TEXT_WEBHOOK.data.payload,
+        },
+      }),
+    ).toMatchObject({
+      waId: '254711111111',
+      phoneNumber: '254711111111',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+  });
+
+  it('does not silently ignore whatsapp.messages with Telnyx-native inbound payload', () => {
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook({
+        data: {
+          event_type: 'whatsapp.messages',
+          payload: SAMPLE_TELNYX_TEXT_WEBHOOK.data.payload,
+        },
+      }),
+    ).toBe(false);
+  });
+
   it('normalizes whatsapp.messages using the Meta Cloud API shape', () => {
     expect(
       parseTelnyxWebhook({
