@@ -2,6 +2,7 @@ import {
   parseTelnyxWebhook,
   shouldSilentlyIgnoreTelnyxWebhook,
 } from './parse-telnyx';
+import { SAMPLE_META_TEXT_WEBHOOK } from './sample-meta-webhook';
 
 export const SAMPLE_TELNYX_TEXT_WEBHOOK = {
   data: {
@@ -140,5 +141,59 @@ describe('shouldSilentlyIgnoreTelnyxWebhook', () => {
     expect(
       shouldSilentlyIgnoreTelnyxWebhook(SAMPLE_TELNYX_TEXT_WEBHOOK),
     ).toBe(false);
+  });
+
+  it('does not ignore WABA whatsapp.messages with an inbound text', () => {
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook({
+        data: {
+          event_type: 'whatsapp.messages',
+          payload: SAMPLE_META_TEXT_WEBHOOK,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('ignores WABA whatsapp.messages that only carry delivery statuses', () => {
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook({
+        data: {
+          event_type: 'whatsapp.messages',
+          payload: {
+            object: 'whatsapp_business_account',
+            entry: [
+              {
+                changes: [
+                  {
+                    value: {
+                      metadata: { phone_number_id: 'PHONE_ID_1' },
+                      statuses: [{ id: 'wamid.X', status: 'delivered' }],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('parseTelnyxWebhook WABA', () => {
+  it('normalizes whatsapp.messages using the Meta Cloud API shape', () => {
+    expect(
+      parseTelnyxWebhook({
+        data: {
+          event_type: 'whatsapp.messages',
+          payload: SAMPLE_META_TEXT_WEBHOOK,
+        },
+      }),
+    ).toMatchObject({
+      waId: '254711111111',
+      phoneNumber: '254711111111',
+      text: 'hello',
+      messageId: 'wamid.TEST123',
+    });
   });
 });

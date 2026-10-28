@@ -1,3 +1,5 @@
+import { parseInboundWebhook } from './parse-inbound';
+
 export type ParsedTelnyxInbound = {
   waId: string;
   phoneNumber: string;
@@ -106,8 +108,19 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
     return false;
   }
   const eventType = data.event_type;
-  if (eventType === 'message.sent' || eventType === 'message.finalized') {
+  if (
+    eventType === 'message.sent' ||
+    eventType === 'message.finalized' ||
+    eventType === 'whatsapp.account.update'
+  ) {
     return true;
+  }
+  if (eventType === 'whatsapp.messages') {
+    const payload = data.payload;
+    if (!isRecord(payload)) {
+      return true;
+    }
+    return parseInboundWebhook(payload).length === 0;
   }
   if (eventType !== 'message.received') {
     return true;
@@ -129,6 +142,33 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
     return true;
   }
   return false;
+}
+
+function parseTelnyxWabaMessages(body: Record<string, unknown>): ParsedTelnyxInbound | null {
+  const data = body.data;
+  if (!isRecord(data) || data.event_type !== 'whatsapp.messages') {
+    return null;
+  }
+  const payload = data.payload;
+  if (!isRecord(payload)) {
+    return null;
+  }
+  const [first] = parseInboundWebhook(payload);
+  if (!first) {
+    return null;
+  }
+  const raw = first.raw;
+  const messageId =
+    isRecord(raw) && typeof raw.id === 'string' && raw.id.length > 0
+      ? raw.id
+      : null;
+  return {
+    waId: first.waId,
+    phoneNumber: first.phoneNumber,
+    text: first.text,
+    messageId,
+    raw: body,
+  };
 }
 
 export function readTelnyxWebhookEventType(body: unknown): string | null {
@@ -220,6 +260,10 @@ function readInboundText(payload: Record<string, unknown>): string | null {
 export function parseTelnyxWebhook(body: unknown): ParsedTelnyxInbound | null {
   if (!isRecord(body)) {
     return null;
+  }
+  const waba = parseTelnyxWabaMessages(body);
+  if (waba) {
+    return waba;
   }
   const data = body.data;
   if (!isRecord(data) || data.event_type !== 'message.received') {
