@@ -28,6 +28,36 @@ export const SAMPLE_TELNYX_TEXT_WEBHOOK = {
   meta: { attempt: 1, delivered_to: 'https://example.com/webhooks/telnyx' },
 };
 
+/** Telnyx `whatsapp.messages` with Cloud API fields directly on `payload`. */
+export const SAMPLE_TELNYX_FLAT_WABA_WEBHOOK = {
+  data: {
+    event_type: 'whatsapp.messages',
+    id: 'evt-flat',
+    occurred_at: '2026-10-28T20:00:30Z',
+    record_type: 'event',
+    payload: {
+      contacts: [{ profile: { name: 'Jane' }, wa_id: '254799229340' }],
+      messages: [
+        {
+          foreign_id: 'wamid.TEST_FLAT',
+          from: '+254799229340',
+          from_user_id: 'KE.1507418017736100',
+          id: '58810d4d-8623-4b05-8818-5e26433659ac',
+          text: { body: 'Hi' },
+          timestamp: '1793217626',
+          type: 'text',
+        },
+      ],
+      messaging_product: 'whatsapp',
+      metadata: {
+        display_phone_number: '254786487316',
+        phone_number_id: '1358319770704653',
+      },
+    },
+  },
+  meta: { attempt: 1, delivered_to: 'https://example.com/webhooks/telnyx' },
+};
+
 describe('parseTelnyxWebhook', () => {
   it('normalizes a WhatsApp text message', () => {
     expect(parseTelnyxWebhook(SAMPLE_TELNYX_TEXT_WEBHOOK)).toEqual({
@@ -222,5 +252,18 @@ describe('parseTelnyxWebhook WABA', () => {
       text: 'hello',
       messageId: 'wamid.TEST123',
     });
+  });
+
+  it('normalizes whatsapp.messages with flattened Telnyx WABA payload', () => {
+    expect(parseTelnyxWebhook(SAMPLE_TELNYX_FLAT_WABA_WEBHOOK)).toMatchObject({
+      waId: '254799229340',
+      phoneNumber: '254799229340',
+      text: 'Hi',
+      messageId: 'wamid.TEST_FLAT',
+      raw: SAMPLE_TELNYX_FLAT_WABA_WEBHOOK,
+    });
+    expect(
+      shouldSilentlyIgnoreTelnyxWebhook(SAMPLE_TELNYX_FLAT_WABA_WEBHOOK),
+    ).toBe(false);
   });
 });

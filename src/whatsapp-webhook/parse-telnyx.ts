@@ -123,6 +123,9 @@ export function shouldSilentlyIgnoreTelnyxWebhook(body: unknown): boolean {
     if (parseInboundWebhook(payload).length > 0) {
       return false;
     }
+    if (parseTelnyxFlattenedWabaPayload(payload) !== null) {
+      return false;
+    }
     return parseTelnyxWhatsappPayloadRecord(payload) === null;
   }
   if (eventType !== 'message.received') {
@@ -179,6 +182,75 @@ function parseTelnyxWhatsappPayloadRecord(
   };
 }
 
+function readWaIdFromWabaMessage(message: Record<string, unknown>): string | null {
+  if (typeof message.from === 'string') {
+    const trimmed = message.from.trim();
+    if (trimmed) {
+      if (/^[A-Z]{2}\./.test(trimmed)) {
+        return trimmed;
+      }
+      const digits = toDigits(trimmed);
+      if (digits) {
+        return digits;
+      }
+    }
+  }
+  if (typeof message.from_user_id === 'string') {
+    const trimmed = message.from_user_id.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+/** Telnyx `whatsapp.messages` with Meta `value` fields at the top of `payload`. */
+function parseTelnyxFlattenedWabaPayload(
+  payload: Record<string, unknown>,
+): ParsedTelnyxInbound | null {
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  if (messages.length === 0) {
+    return null;
+  }
+  const first = messages[0];
+  if (!isRecord(first)) {
+    return null;
+  }
+
+  let waId = readWaIdFromWabaMessage(first);
+  if (!waId) {
+    const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
+    for (const contact of contacts) {
+      if (!isRecord(contact) || typeof contact.wa_id !== 'string') {
+        continue;
+      }
+      const digits = toDigits(contact.wa_id);
+      if (digits) {
+        waId = digits;
+        break;
+      }
+    }
+  }
+  if (!waId) {
+    return null;
+  }
+
+  const messageId =
+    typeof first.foreign_id === 'string' && first.foreign_id.length > 0
+      ? first.foreign_id
+      : typeof first.id === 'string' && first.id.length > 0
+        ? first.id
+        : null;
+
+  return {
+    waId,
+    phoneNumber: waId,
+    text: readWhatsAppBodyText(first),
+    messageId,
+    raw: payload,
+  };
+}
+
 function parseTelnyxWabaMessages(body: Record<string, unknown>): ParsedTelnyxInbound | null {
   const data = body.data;
   if (!isRecord(data) || data.event_type !== 'whatsapp.messages') {
@@ -189,21 +261,26 @@ function parseTelnyxWabaMessages(body: Record<string, unknown>): ParsedTelnyxInb
     return null;
   }
   const [first] = parseInboundWebhook(payload);
-  if (!first) {
+  if (first) {
+    const raw = first.raw;
+    const messageId =
+      isRecord(raw) && typeof raw.id === 'string' && raw.id.length > 0
+        ? raw.id
+        : null;
+    return {
+      waId: first.waId,
+      phoneNumber: first.phoneNumber,
+      text: first.text,
+      messageId,
+      raw: body,
+    };
+  }
+
+  const flattened = parseTelnyxFlattenedWabaPayload(payload);
+  if (!flattened) {
     return null;
   }
-  const raw = first.raw;
-  const messageId =
-    isRecord(raw) && typeof raw.id === 'string' && raw.id.length > 0
-      ? raw.id
-      : null;
-  return {
-    waId: first.waId,
-    phoneNumber: first.phoneNumber,
-    text: first.text,
-    messageId,
-    raw: body,
-  };
+  return { ...flattened, raw: body };
 }
 
 export function readTelnyxWebhookEventType(body: unknown): string | null {
