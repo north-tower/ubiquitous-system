@@ -154,6 +154,10 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
+    this.logger.log(
+      `Telnyx inbound from=${parsed.phoneNumber} textLen=${parsed.text?.length ?? 0} messageId=${parsed.messageId ?? 'none'}`,
+    );
+
     const tenant = await this.tenantResolver.resolveForTelnyxInbound();
     if (!tenant) {
       this.logger.warn('No tenant for Telnyx inbound');
