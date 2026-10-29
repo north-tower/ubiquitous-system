@@ -1,14 +1,6 @@
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
-import type { TelnyxReplyButtonSpec } from '../outbound/telnyx-interactive-button';
 import { HMG_SERVICE_OPTIONS } from './hmg-options';
 import * as copy from './hmg-copy';
-
-/** First three services as WABA quick-reply buttons (Telnyx). Titles ≤20 chars. */
-const HMG_TELNYX_TOPIC_BUTTONS: TelnyxReplyButtonSpec['buttons'] = [
-  { id: 'tax_kra', title: '📋 Tax & KRA' },
-  { id: 'accounting', title: '📒 Accounting' },
-  { id: 'audit', title: '🔍 Audit' },
-];
 
 /** WhatsApp list row titles are capped at 24 characters (Meta Cloud API). */
 const WA_LIST_ROW_TITLE_MAX = 24;
@@ -28,16 +20,6 @@ function waListRowTitle(optionId: string, fallbackLabel: string): string {
     return preferred;
   }
   return preferred.slice(0, WA_LIST_ROW_TITLE_MAX).trimEnd();
-}
-
-export function hmgTopicButtonMessage(
-  intro: string = copy.HMG_GREETING,
-): TelnyxReplyButtonSpec {
-  return {
-    bodyText: copy.hmgTelnyxButtonMenuBody(intro),
-    footerText: 'Or reply 4, 5, or 6 for the other services.',
-    buttons: HMG_TELNYX_TOPIC_BUTTONS,
-  };
 }
 
 export function hmgTopicListMessage(): BaileysListMessageSpec {

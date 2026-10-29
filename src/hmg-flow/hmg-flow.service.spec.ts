@@ -39,7 +39,6 @@ describe('HmgFlowService', () => {
   it('opens with greeting list on first message', async () => {
     const reply = await service.handleInbound(conversation, 'Hello, book consultation');
     expect(reply.baileysList?.sections[0].rows).toHaveLength(6);
-    expect(reply.telnyxButtons?.buttons).toHaveLength(3);
     expect(reply.replyText).toContain('HMG Group Africa');
     expect(sessions.start).toHaveBeenCalledWith(
       'conv-1',

@@ -11,9 +11,8 @@ import { matchResetCommand } from '../state-machine/match-reset-command';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import * as copy from './hmg-copy';
-import { hmgTopicButtonMessage, hmgTopicListMessage } from './hmg-interactive';
+import { hmgTopicListMessage } from './hmg-interactive';
 import { HMG_SERVICE_OPTIONS } from './hmg-options';
-import type { TelnyxReplyButtonSpec } from '../outbound/telnyx-interactive-button';
 import { HmgSession } from './hmg-session.entity';
 import { HmgSessionService } from './hmg-session.service';
 import type { HmgPayload } from './hmg-payload';
@@ -22,10 +21,8 @@ import { HMG_STEPS } from './hmg-steps';
 export type HmgReply = {
   replyText: string;
   silent?: boolean;
-  /** Interactive list (Baileys native list, or Twilio/Telnyx list fallback). */
+  /** Interactive list (Telnyx, Baileys native list, or Twilio fallback text). */
   baileysList?: BaileysListMessageSpec;
-  /** Up to 3 quick-reply buttons (Telnyx / WABA). */
-  telnyxButtons?: TelnyxReplyButtonSpec;
 };
 
 @Injectable()
@@ -85,7 +82,6 @@ export class HmgFlowService {
     return {
       replyText: list.text,
       baileysList: list,
-      telnyxButtons: hmgTopicButtonMessage(list.text),
     };
   }
 
@@ -109,14 +105,13 @@ export class HmgFlowService {
   ): Promise<HmgReply> {
     const matched = matchServiceOption(text);
     if (!matched) {
-      const reaskIntro = 'Please choose a service:';
+      const list = hmgTopicListMessage();
       return {
         replyText: copy.hmgTopicReask(),
         baileysList: {
-          ...hmgTopicListMessage(),
-          text: reaskIntro,
+          ...list,
+          text: 'Please choose a service from the list below:',
         },
-        telnyxButtons: hmgTopicButtonMessage(reaskIntro),
       };
     }
 
