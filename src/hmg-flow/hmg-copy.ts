@@ -5,6 +5,7 @@ import {
   HMG_AUDIT_PURPOSE_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
+  HMG_PAYROLL_SIZE_OPTIONS,
   HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
   HMG_TIMING_OPTIONS,
@@ -14,6 +15,7 @@ import {
   hmgBooksHandlingLabel,
   hmgKraStatusLabel,
   hmgMeetingLabel,
+  hmgPayrollSizeLabel,
   hmgRequestLabel,
   hmgServiceLabel,
   hmgTimingLabel,
@@ -56,6 +58,18 @@ export function hmgBusinessNameReask(entityId: string): string {
     hmgBusinessNamePrompt(entityId),
     '',
     'Send at least a couple of characters so we can note it on your request.',
+  ].join('\n');
+}
+
+export const HMG_PAYROLL_SIZE_PROMPT = 'How many people are on the payroll?';
+
+export function hmgPayrollSizeReask(): string {
+  return [
+    HMG_PAYROLL_SIZE_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_PAYROLL_SIZE_OPTIONS),
   ].join('\n');
 }
 
@@ -159,7 +173,13 @@ export function hmgBookingPhoneReask(): string {
   ].join('\n');
 }
 
+export const HMG_SOMETHING_ELSE_BRIEF_PROMPT =
+  'Of course — what would you like to go through?';
+
 export function hmgBriefPrompt(serviceId: string): string {
+  if (serviceId === 'something_else') {
+    return HMG_SOMETHING_ELSE_BRIEF_PROMPT;
+  }
   const label = hmgServiceLabel(serviceId);
   return [
     `Great — *${label}*.`,
@@ -203,12 +223,16 @@ export function hmgTaxKraSubmitted(
     ...(payload.auditPurposeId
       ? [`• Audit for: ${hmgAuditPurposeLabel(payload.auditPurposeId)}`]
       : []),
+    ...(payload.payrollSizeId
+      ? [`• Payroll size: ${hmgPayrollSizeLabel(payload.payrollSizeId)}`]
+      : []),
     ...(payload.kraStatusId
       ? [`• KRA status: ${hmgKraStatusLabel(payload.kraStatusId)}`]
       : []),
     ...(payload.booksHandlingId
       ? [`• Books: ${hmgBooksHandlingLabel(payload.booksHandlingId)}`]
       : []),
+    ...(payload.brief ? [`• Details: ${payload.brief}`] : []),
     ...(payload.timingId
       ? [`• Timing: ${hmgTimingLabel(payload.timingId)}`]
       : []),

@@ -75,8 +75,41 @@ export function hmgEntityLabel(entityId: string): string {
 export function hmgServiceNeedsEntityStep(serviceId: string): boolean {
   return (
     serviceId === 'tax_kra' ||
+    serviceId === 'tax_health' ||
     serviceId === 'accounting' ||
-    serviceId === 'audit'
+    serviceId === 'audit' ||
+    serviceId === 'payroll' ||
+    serviceId === 'something_else'
+  );
+}
+
+export const HMG_PAYROLL_SIZE_OPTIONS: NumberedOption[] = [
+  {
+    id: 'size_1_5',
+    label: '1–5',
+    aliases: ['1-5', '1 to 5', '1–5'],
+  },
+  {
+    id: 'size_6_20',
+    label: '6–20',
+    aliases: ['6-20', '6 to 20', '6–20'],
+  },
+  {
+    id: 'size_21_50',
+    label: '21–50',
+    aliases: ['21-50', '21 to 50', '21–50'],
+  },
+  {
+    id: 'size_over_50',
+    label: 'Over 50',
+    aliases: ['over 50', '50+', 'more than 50'],
+  },
+];
+
+export function hmgPayrollSizeLabel(payrollSizeId: string): string {
+  return (
+    HMG_PAYROLL_SIZE_OPTIONS.find((option) => option.id === payrollSizeId)
+      ?.label ?? payrollSizeId
   );
 }
 

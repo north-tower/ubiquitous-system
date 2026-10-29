@@ -17,6 +17,7 @@ import {
   hmgBooksHandlingListMessage,
   hmgKraStatusListMessage,
   hmgMeetingListMessage,
+  hmgPayrollSizeListMessage,
   hmgPutThroughListMessage,
   hmgTimingListMessage,
   hmgTopicListMessage,
@@ -27,6 +28,7 @@ import {
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
+  HMG_PAYROLL_SIZE_OPTIONS,
   HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
   HMG_TIMING_OPTIONS,
@@ -121,6 +123,9 @@ export class HmgFlowService {
     }
     if (session.currentStep === HMG_STEPS.AWAITING_BUSINESS_NAME) {
       return this.handleBusinessNameStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_PAYROLL_SIZE) {
+      return this.handlePayrollSizeStep(session, text);
     }
     if (session.currentStep === HMG_STEPS.AWAITING_AUDIT_PURPOSE) {
       return this.handleAuditPurposeStep(session, text);
@@ -254,11 +259,62 @@ export class HmgFlowService {
       };
     }
 
+    if (serviceId === 'payroll') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_PAYROLL_SIZE,
+        payload,
+      });
+      const list = hmgPayrollSizeListMessage();
+      return {
+        replyText: list.text,
+        baileysList: list,
+      };
+    }
+
+    if (serviceId === 'something_else') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_BRIEF,
+        payload,
+      });
+      return { replyText: copy.hmgBriefPrompt(serviceId) };
+    }
+
     await this.sessions.save(session, {
       step: HMG_STEPS.AWAITING_KRA_STATUS,
       payload,
     });
     const list = hmgKraStatusListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handlePayrollSizeStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_PAYROLL_SIZE_OPTIONS);
+    if (!matched) {
+      const list = hmgPayrollSizeListMessage();
+      return {
+        replyText: copy.hmgPayrollSizeReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_PAYROLL_SIZE_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      payrollSizeId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_TIMING,
+      payload,
+    });
+    const list = hmgTimingListMessage();
     return {
       replyText: list.text,
       baileysList: list,
@@ -507,11 +563,25 @@ export class HmgFlowService {
     text: string,
   ): Promise<HmgReply> {
     const serviceId = session.payload.serviceId ?? 'something_else';
-    if (text.length < 4) {
+    const minLength = serviceId === 'something_else' ? 2 : 4;
+    if (text.length < minLength) {
       return { replyText: copy.hmgBriefReask(serviceId) };
     }
 
     const payload: HmgPayload = { ...session.payload, brief: text };
+
+    if (serviceId === 'something_else') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_TIMING,
+        payload,
+      });
+      const list = hmgTimingListMessage();
+      return {
+        replyText: list.text,
+        baileysList: list,
+      };
+    }
+
     const reference = createHmgReference();
     await this.sessions.save(session, {
       step: HMG_STEPS.SUBMITTED,

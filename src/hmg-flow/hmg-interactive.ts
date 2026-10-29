@@ -5,6 +5,7 @@ import {
   HMG_BOOKS_HANDLING_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
+  HMG_PAYROLL_SIZE_OPTIONS,
   HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
   HMG_TIMING_OPTIONS,
@@ -69,6 +70,13 @@ const HMG_PUT_THROUGH_ROW_DISPLAY: Record<string, string> = {
   advisor_call_me: '📞 Have an advisor call me',
 };
 
+const HMG_PAYROLL_SIZE_ROW_DISPLAY: Record<string, string> = {
+  size_1_5: '1–5',
+  size_6_20: '6–20',
+  size_21_50: '21–50',
+  size_over_50: 'Over 50',
+};
+
 function waListRowTitle(optionId: string, fallbackLabel: string): string {
   const preferred =
     HMG_LIST_ROW_DISPLAY[optionId] ??
@@ -79,6 +87,7 @@ function waListRowTitle(optionId: string, fallbackLabel: string): string {
     HMG_TIMING_ROW_DISPLAY[optionId] ??
     HMG_MEETING_ROW_DISPLAY[optionId] ??
     HMG_PUT_THROUGH_ROW_DISPLAY[optionId] ??
+    HMG_PAYROLL_SIZE_ROW_DISPLAY[optionId] ??
     fallbackLabel;
   if (preferred.length <= WA_LIST_ROW_TITLE_MAX) {
     return preferred;
@@ -164,6 +173,28 @@ export function hmgKraStatusListMessage(): BaileysListMessageSpec {
           title: waListRowTitle(
             option.id,
             HMG_KRA_STATUS_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgPayrollSizeListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_PAYROLL_SIZE_PROMPT,
+    title: 'Payroll size',
+    buttonText: 'Choose range',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Headcount',
+        rows: HMG_PAYROLL_SIZE_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_PAYROLL_SIZE_ROW_DISPLAY[option.id] ?? option.label,
           ),
         })),
       },
