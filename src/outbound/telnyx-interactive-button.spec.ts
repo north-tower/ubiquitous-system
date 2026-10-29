@@ -20,18 +20,23 @@ describe('buildTelnyxWhatsappInteractiveButtonBody', () => {
         type: 'interactive',
         interactive: {
           type: 'button',
-          header: { type: 'text', text: 'HMG Group Africa' },
           body: {
-            text: expect.stringContaining('HMG Group Africa'),
+            text: expect.stringMatching(/\*HMG Group Africa\*/),
+          },
+          footer: {
+            text: expect.stringContaining('4, 5, or 6'),
           },
           action: {
             buttons: [
-              { type: 'reply', reply: { id: 'tax_kra', title: 'Tax & KRA' } },
               {
                 type: 'reply',
-                reply: { id: 'accounting', title: 'Accounting' },
+                reply: { id: 'tax_kra', title: '📋 Tax & KRA' },
               },
-              { type: 'reply', reply: { id: 'audit', title: 'Audit' } },
+              {
+                type: 'reply',
+                reply: { id: 'accounting', title: '📒 Accounting' },
+              },
+              { type: 'reply', reply: { id: 'audit', title: '🔍 Audit' } },
             ],
           },
         },

@@ -109,15 +109,14 @@ export class HmgFlowService {
   ): Promise<HmgReply> {
     const matched = matchServiceOption(text);
     if (!matched) {
-      const reaskBody =
-        'Please tap a button below, or reply with a number (1–6) for other services.';
+      const reaskIntro = 'Please choose a service:';
       return {
         replyText: copy.hmgTopicReask(),
         baileysList: {
           ...hmgTopicListMessage(),
-          text: reaskBody,
+          text: reaskIntro,
         },
-        telnyxButtons: hmgTopicButtonMessage(reaskBody),
+        telnyxButtons: hmgTopicButtonMessage(reaskIntro),
       };
     }
 

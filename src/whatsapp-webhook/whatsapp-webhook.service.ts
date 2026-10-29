@@ -25,6 +25,7 @@ import type { TelnyxReplyButtonSpec } from '../outbound/telnyx-interactive-butto
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import { matchResetCommand } from '../state-machine/match-reset-command';
+import { hmgTelnyxTextMenuBody } from '../hmg-flow/hmg-copy';
 import { DEFAULT_TENANT_FLOW, type TenantFlow } from '../tenant/tenant-flow';
 import { TenantResolverService } from '../tenant/tenant-resolver.service';
 import { parseInboundWebhook } from './parse-inbound';
@@ -281,6 +282,20 @@ export class WhatsappWebhookService implements OnModuleInit {
       silent = Boolean(reply.silent);
     }
 
+    if (
+      input.flow === 'hmg_consultation' &&
+      input.channel === 'telnyx' &&
+      this.hmgTelnyxTopicMode() === 'text' &&
+      (baileysList ?? telnyxButtons)
+    ) {
+      const reask = replyText.includes('Please pick a service');
+      baileysList = undefined;
+      telnyxButtons = undefined;
+      replyText = hmgTelnyxTextMenuBody(
+        reask ? 'Please choose a service:' : undefined,
+      );
+    }
+
     if (input.channel === 'baileys') {
       this.logger.log(
         `Baileys reply plan tenant=${input.tenantId} conversation=${conversation.id} flow=${input.flow} inboundLen=${trimmed.length} silent=${silent} replyLen=${replyText?.length ?? 0} hasList=${Boolean(baileysList)} replyPreview=${previewBaileysText(replyText ?? '')}`,
@@ -323,5 +338,11 @@ export class WhatsappWebhookService implements OnModuleInit {
       },
     ];
     await this.outbound.sendAll(outboundJobs);
+  }
+
+  /** Telnyx HMG topic: `buttons` (WABA quick replies) or `text` (emoji menu, same on all clients). */
+  private hmgTelnyxTopicMode(): 'buttons' | 'text' {
+    const raw = this.config.get<string>('HMG_TELNYX_TOPIC_MODE')?.trim().toLowerCase();
+    return raw === 'text' ? 'text' : 'buttons';
   }
 }

@@ -2,11 +2,13 @@
 export type TelnyxReplyButtonSpec = {
   bodyText: string;
   headerText?: string;
+  footerText?: string;
   buttons: { id: string; title: string }[];
 };
 
 const WA_BUTTON_TITLE_MAX = 20;
 const WA_HEADER_TEXT_MAX = 60;
+const WA_FOOTER_TEXT_MAX = 60;
 const WA_BODY_TEXT_MAX = 1024;
 const WA_BUTTON_COUNT_MAX = 3;
 
@@ -41,6 +43,12 @@ export function telnyxInteractiveButtonsFromSpec(
     interactive.header = {
       type: 'text',
       text: clamp(spec.headerText, WA_HEADER_TEXT_MAX),
+    };
+  }
+
+  if (spec.footerText?.trim()) {
+    interactive.footer = {
+      text: clamp(spec.footerText, WA_FOOTER_TEXT_MAX),
     };
   }
 

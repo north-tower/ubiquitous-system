@@ -4,6 +4,42 @@ import { HMG_SERVICE_OPTIONS, hmgServiceLabel } from './hmg-options';
 export const HMG_GREETING =
   'Hello 👋 Thank you for contacting HMG Group Africa. What would you like to discuss?';
 
+/** Emoji service lines (same labels as the HMG design mock). */
+export function hmgServiceMenuLines(): string {
+  return [
+    '📋 Tax & KRA advisory',
+    '📒 Accounting & bookkeeping',
+    '🔍 Audit & assurance',
+    '👥 Payroll',
+    '🩺 Tax health check',
+    '💬 Something else',
+  ].join('\n');
+}
+
+/** Plain-text Telnyx menu — same look on mobile and desktop (reply 1–6). */
+export function hmgTelnyxTextMenuBody(intro: string = HMG_GREETING): string {
+  return [
+    '*HMG Group Africa*',
+    '',
+    intro,
+    '',
+    hmgServiceMenuLines(),
+    '',
+    'Reply with the number (1–6).',
+  ].join('\n');
+}
+
+/** Body for WABA quick-reply buttons (options listed above the tappable rows). */
+export function hmgTelnyxButtonMenuBody(intro: string = HMG_GREETING): string {
+  return [
+    '*HMG Group Africa*',
+    '',
+    intro,
+    '',
+    hmgServiceMenuLines(),
+  ].join('\n');
+}
+
 export function hmgTopicReask(): string {
   return [
     'Please pick a service from the list, or reply with the number:',

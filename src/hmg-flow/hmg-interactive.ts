@@ -5,9 +5,9 @@ import * as copy from './hmg-copy';
 
 /** First three services as WABA quick-reply buttons (Telnyx). Titles ≤20 chars. */
 const HMG_TELNYX_TOPIC_BUTTONS: TelnyxReplyButtonSpec['buttons'] = [
-  { id: 'tax_kra', title: 'Tax & KRA' },
-  { id: 'accounting', title: 'Accounting' },
-  { id: 'audit', title: 'Audit' },
+  { id: 'tax_kra', title: '📋 Tax & KRA' },
+  { id: 'accounting', title: '📒 Accounting' },
+  { id: 'audit', title: '🔍 Audit' },
 ];
 
 /** WhatsApp list row titles are capped at 24 characters (Meta Cloud API). */
@@ -31,11 +31,11 @@ function waListRowTitle(optionId: string, fallbackLabel: string): string {
 }
 
 export function hmgTopicButtonMessage(
-  bodyText: string = copy.HMG_GREETING,
+  intro: string = copy.HMG_GREETING,
 ): TelnyxReplyButtonSpec {
   return {
-    bodyText,
-    headerText: 'HMG Group Africa',
+    bodyText: copy.hmgTelnyxButtonMenuBody(intro),
+    footerText: 'Or reply 4, 5, or 6 for the other services.',
     buttons: HMG_TELNYX_TOPIC_BUTTONS,
   };
 }
