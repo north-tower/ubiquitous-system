@@ -13,6 +13,7 @@ import { isHumanHandoffState } from '../state-machine/human-handoff';
 import * as copy from './hmg-copy';
 import {
   hmgEntityListMessage,
+  hmgBooksHandlingListMessage,
   hmgKraStatusListMessage,
   hmgMeetingListMessage,
   hmgPutThroughListMessage,
@@ -20,6 +21,7 @@ import {
   hmgTopicListMessage,
 } from './hmg-interactive';
 import {
+  HMG_BOOKS_HANDLING_OPTIONS,
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
@@ -121,6 +123,9 @@ export class HmgFlowService {
     if (session.currentStep === HMG_STEPS.AWAITING_KRA_STATUS) {
       return this.handleKraStatusStep(session, text);
     }
+    if (session.currentStep === HMG_STEPS.AWAITING_BOOKS_HANDLING) {
+      return this.handleBooksHandlingStep(session, text);
+    }
     if (session.currentStep === HMG_STEPS.AWAITING_TIMING) {
       return this.handleTimingStep(session, text);
     }
@@ -219,11 +224,55 @@ export class HmgFlowService {
       ...session.payload,
       businessName: text,
     };
+    const serviceId = session.payload.serviceId ?? 'tax_kra';
+    if (serviceId === 'accounting') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_BOOKS_HANDLING,
+        payload,
+      });
+      const list = hmgBooksHandlingListMessage();
+      return {
+        replyText: list.text,
+        baileysList: list,
+      };
+    }
+
     await this.sessions.save(session, {
       step: HMG_STEPS.AWAITING_KRA_STATUS,
       payload,
     });
     const list = hmgKraStatusListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handleBooksHandlingStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_BOOKS_HANDLING_OPTIONS);
+    if (!matched) {
+      const list = hmgBooksHandlingListMessage();
+      return {
+        replyText: copy.hmgBooksHandlingReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_BOOKS_HANDLING_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      booksHandlingId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_TIMING,
+      payload,
+    });
+    const list = hmgTimingListMessage();
     return {
       replyText: list.text,
       baileysList: list,

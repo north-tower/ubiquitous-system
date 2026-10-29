@@ -1,6 +1,7 @@
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import {
   HMG_ENTITY_OPTIONS,
+  HMG_BOOKS_HANDLING_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
   HMG_PUT_THROUGH_OPTIONS,
@@ -35,6 +36,13 @@ const HMG_KRA_STATUS_ROW_DISPLAY: Record<string, string> = {
   not_sure: '❓ Honestly not sure',
 };
 
+const HMG_BOOKS_HANDLING_ROW_DISPLAY: Record<string, string> = {
+  in_house_accountant: 'In-house accountant',
+  external_accountant: 'External accountant',
+  spreadsheets_manual: 'Spreadsheets / manually',
+  not_handled_yet: 'Not really handled yet',
+};
+
 const HMG_TIMING_ROW_DISPLAY: Record<string, string> = {
   urgent_deadline: "🔥 It's urgent — deadline",
   this_week: 'This week',
@@ -58,6 +66,7 @@ function waListRowTitle(optionId: string, fallbackLabel: string): string {
     HMG_LIST_ROW_DISPLAY[optionId] ??
     HMG_ENTITY_ROW_DISPLAY[optionId] ??
     HMG_KRA_STATUS_ROW_DISPLAY[optionId] ??
+    HMG_BOOKS_HANDLING_ROW_DISPLAY[optionId] ??
     HMG_TIMING_ROW_DISPLAY[optionId] ??
     HMG_MEETING_ROW_DISPLAY[optionId] ??
     HMG_PUT_THROUGH_ROW_DISPLAY[optionId] ??
@@ -81,7 +90,6 @@ export function hmgTopicListMessage(): BaileysListMessageSpec {
         rows: HMG_SERVICE_OPTIONS.map((option) => ({
           rowId: option.id,
           title: waListRowTitle(option.id, option.label),
-          description: option.label,
         })),
       },
     ],
@@ -104,7 +112,6 @@ export function hmgEntityListMessage(): BaileysListMessageSpec {
             option.id,
             HMG_ENTITY_ROW_DISPLAY[option.id] ?? option.label,
           ),
-          description: option.label,
         })),
       },
     ],
@@ -127,7 +134,28 @@ export function hmgKraStatusListMessage(): BaileysListMessageSpec {
             option.id,
             HMG_KRA_STATUS_ROW_DISPLAY[option.id] ?? option.label,
           ),
-          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgBooksHandlingListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_BOOKS_HANDLING_PROMPT,
+    title: 'Bookkeeping',
+    buttonText: 'Choose option',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'How books are handled',
+        rows: HMG_BOOKS_HANDLING_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_BOOKS_HANDLING_ROW_DISPLAY[option.id] ?? option.label,
+          ),
         })),
       },
     ],
@@ -150,7 +178,6 @@ export function hmgTimingListMessage(): BaileysListMessageSpec {
             option.id,
             HMG_TIMING_ROW_DISPLAY[option.id] ?? option.label,
           ),
-          description: option.label,
         })),
       },
     ],
@@ -173,7 +200,6 @@ export function hmgMeetingListMessage(): BaileysListMessageSpec {
             option.id,
             HMG_MEETING_ROW_DISPLAY[option.id] ?? option.label,
           ),
-          description: option.label,
         })),
       },
     ],
@@ -196,7 +222,6 @@ export function hmgPutThroughListMessage(): BaileysListMessageSpec {
             option.id,
             HMG_PUT_THROUGH_ROW_DISPLAY[option.id] ?? option.label,
           ),
-          description: option.label,
         })),
       },
     ],

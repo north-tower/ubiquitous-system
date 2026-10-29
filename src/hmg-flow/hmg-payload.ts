@@ -3,6 +3,7 @@ export type HmgPayload = {
   entityId?: string;
   businessName?: string;
   kraStatusId?: string;
+  booksHandlingId?: string;
   timingId?: string;
   meetingId?: string;
   requestId?: string;

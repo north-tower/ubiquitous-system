@@ -73,7 +73,38 @@ export function hmgEntityLabel(entityId: string): string {
 }
 
 export function hmgServiceNeedsEntityStep(serviceId: string): boolean {
-  return serviceId === 'tax_kra';
+  return serviceId === 'tax_kra' || serviceId === 'accounting';
+}
+
+export const HMG_BOOKS_HANDLING_OPTIONS: NumberedOption[] = [
+  {
+    id: 'in_house_accountant',
+    label: 'In-house accountant',
+    aliases: ['in house', 'in-house', 'internal accountant'],
+  },
+  {
+    id: 'external_accountant',
+    label: 'External accountant',
+    aliases: ['external', 'outsourced accountant'],
+  },
+  {
+    id: 'spreadsheets_manual',
+    label: 'Spreadsheets / manually',
+    aliases: ['spreadsheet', 'spreadsheets', 'manual', 'excel'],
+  },
+  {
+    id: 'not_handled_yet',
+    label: 'Not really handled yet',
+    aliases: ['not handled', 'no books', 'not really handled'],
+  },
+];
+
+export function hmgBooksHandlingLabel(booksHandlingId: string): string {
+  return (
+    HMG_BOOKS_HANDLING_OPTIONS.find(
+      (option) => option.id === booksHandlingId,
+    )?.label ?? booksHandlingId
+  );
 }
 
 export function hmgEntityIsPersonal(entityId: string): boolean {

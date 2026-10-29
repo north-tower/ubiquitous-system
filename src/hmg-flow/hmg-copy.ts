@@ -1,5 +1,6 @@
 import { formatNumberedOptions } from '../enquiry-flow/match-numbered-option';
 import {
+  HMG_BOOKS_HANDLING_OPTIONS,
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
@@ -8,6 +9,7 @@ import {
   HMG_TIMING_OPTIONS,
   hmgEntityIsPersonal,
   hmgEntityLabel,
+  hmgBooksHandlingLabel,
   hmgKraStatusLabel,
   hmgMeetingLabel,
   hmgRequestLabel,
@@ -57,6 +59,19 @@ export function hmgBusinessNameReask(entityId: string): string {
 
 export const HMG_KRA_STATUS_PROMPT =
   'Where do things stand with KRA at the moment?';
+
+export const HMG_BOOKS_HANDLING_PROMPT =
+  'How are the books handled right now?';
+
+export function hmgBooksHandlingReask(): string {
+  return [
+    HMG_BOOKS_HANDLING_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_BOOKS_HANDLING_OPTIONS),
+  ].join('\n');
+}
 
 export function hmgKraStatusReask(): string {
   return [
@@ -173,6 +188,9 @@ export function hmgTaxKraSubmitted(
       : []),
     ...(payload.kraStatusId
       ? [`• KRA status: ${hmgKraStatusLabel(payload.kraStatusId)}`]
+      : []),
+    ...(payload.booksHandlingId
+      ? [`• Books: ${hmgBooksHandlingLabel(payload.booksHandlingId)}`]
       : []),
     ...(payload.timingId
       ? [`• Timing: ${hmgTimingLabel(payload.timingId)}`]

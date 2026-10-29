@@ -171,6 +171,72 @@ describe('HmgFlowService', () => {
     expect(sessions.markSubmitted).toHaveBeenCalled();
   });
 
+  it('accepts accounting and follows books handling path', async () => {
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_TOPIC,
+      payload: {},
+    } as never);
+    sessions.save.mockImplementation(async (session, next) => ({
+      ...session,
+      currentStep: next.step,
+      payload: next.payload,
+    }));
+
+    const topicReply = await service.handleInbound(conversation, 'accounting');
+    expect(topicReply.replyText).toContain('business or for you personally');
+    expect(sessions.save).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: HMG_STEPS.AWAITING_ENTITY,
+        payload: expect.objectContaining({ serviceId: 'accounting' }),
+      }),
+    );
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_BUSINESS_NAME,
+      payload: {
+        serviceId: 'accounting',
+        entityId: 'limited_company',
+      },
+    } as never);
+
+    const nameReply = await service.handleInbound(conversation, 'acme');
+    expect(nameReply.replyText).toContain('How are the books handled');
+    expect(sessions.save).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: HMG_STEPS.AWAITING_BOOKS_HANDLING,
+        payload: expect.objectContaining({ businessName: 'acme' }),
+      }),
+    );
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_BOOKING_PHONE,
+      payload: {
+        serviceId: 'accounting',
+        entityId: 'limited_company',
+        businessName: 'acme',
+        booksHandlingId: 'in_house_accountant',
+        timingId: 'urgent_deadline',
+        meetingId: 'office_akai_plaza',
+        requestId: 'book_consultation',
+        contactName: 'miki',
+      },
+    } as never);
+
+    const doneReply = await service.handleInbound(conversation, '0799229340');
+    expect(doneReply.replyText).toContain('Thank you, miki');
+    expect(doneReply.replyText).toContain('Accounting & bookkeeping');
+    expect(doneReply.replyText).toContain('In-house accountant');
+    expect(sessions.markSubmitted).toHaveBeenCalled();
+  });
+
   it('completes tax path when advisor call is chosen', async () => {
     sessions.findActive.mockResolvedValue({
       id: 'sess-1',
