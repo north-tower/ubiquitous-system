@@ -25,6 +25,7 @@ import {
   TwilioSendError,
   twilioSendErrorCode,
 } from './twilio-whatsapp.client';
+import type { TelnyxReplyButtonSpec } from './telnyx-interactive-button';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
 
@@ -41,6 +42,7 @@ export type OutboundTextJob = {
   twilioContent?: EnquiryTwilioContentKey;
   twilioContentVariables?: Record<string, string>;
   baileysList?: BaileysListMessageSpec;
+  telnyxButtons?: TelnyxReplyButtonSpec;
 };
 
 @Injectable()
@@ -75,6 +77,9 @@ export class OutboundMessageService {
       return;
     }
     if (await this.trySendBaileysList(job)) {
+      return;
+    }
+    if (await this.trySendTelnyxButtons(job)) {
       return;
     }
     if (await this.trySendTelnyxList(job)) {
@@ -205,8 +210,45 @@ export class OutboundMessageService {
     }
   }
 
+  private async trySendTelnyxButtons(job: OutboundTextJob): Promise<boolean> {
+    if (job.channel !== 'telnyx' || !job.telnyxButtons) {
+      return false;
+    }
+    this.logger.log(
+      `Telnyx buttons attempt conversation=${job.conversationId} to=${job.to} count=${job.telnyxButtons.buttons.length}`,
+    );
+    try {
+      const sent = await this.router.sendTelnyxButtons(
+        job.to,
+        job.telnyxButtons,
+        job.telnyxFrom,
+      );
+      await this.conversations.recordOutbound({
+        conversationId: job.conversationId,
+        text: job.telnyxButtons.bodyText,
+        rawPayload: {
+          channel: sent.channel,
+          messageId: sent.messageId,
+          telnyxInteractiveButtons: job.telnyxButtons,
+          response: sent.raw,
+        },
+      });
+      this.logger.log(
+        `Sent Telnyx buttons conversation=${job.conversationId} to=${job.to}`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Telnyx buttons send failed, falling back conversation=${job.conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
+  }
+
   private async trySendTelnyxList(job: OutboundTextJob): Promise<boolean> {
-    if (job.channel !== 'telnyx' || !job.baileysList) {
+    if (job.channel !== 'telnyx' || !job.baileysList || job.telnyxButtons) {
       return false;
     }
     const listSummary = summarizeBaileysList(job.baileysList);

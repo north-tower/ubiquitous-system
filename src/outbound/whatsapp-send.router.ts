@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
+import type { TelnyxReplyButtonSpec } from './telnyx-interactive-button';
 import { TelnyxWhatsappClient } from './telnyx-whatsapp.client';
 import { TwilioWhatsappClient } from './twilio-whatsapp.client';
 import {
@@ -89,6 +90,22 @@ export class WhatsappSendRouter {
       throw new Error('Telnyx is not configured.');
     }
     const result = await this.telnyx.sendInteractiveList(to, list, telnyxFrom);
+    return { channel: 'telnyx', ...result };
+  }
+
+  async sendTelnyxButtons(
+    to: string,
+    buttons: TelnyxReplyButtonSpec,
+    telnyxFrom?: string,
+  ): Promise<WhatsappSendResult> {
+    if (!this.telnyx.isConfigured()) {
+      throw new Error('Telnyx is not configured.');
+    }
+    const result = await this.telnyx.sendInteractiveButtons(
+      to,
+      buttons,
+      telnyxFrom,
+    );
     return { channel: 'telnyx', ...result };
   }
 

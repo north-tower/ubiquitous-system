@@ -21,6 +21,7 @@ import {
 } from '../outbound/baileys-whatsapp.client';
 import { previewBaileysText } from '../outbound/baileys-debug';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
+import type { TelnyxReplyButtonSpec } from '../outbound/telnyx-interactive-button';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import { matchResetCommand } from '../state-machine/match-reset-command';
@@ -245,6 +246,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     let twilioContent: EnquiryTwilioContentKey | undefined;
     let twilioContentVariables: EnquiryReply['twilioContentVariables'];
     let baileysList: EnquiryReply['baileysList'];
+    let telnyxButtons: TelnyxReplyButtonSpec | undefined;
     let silent = false;
     if (input.flow === 'enquiry_intake') {
       const reply = await this.enquiryFlow.handleInbound(
@@ -268,6 +270,7 @@ export class WhatsappWebhookService implements OnModuleInit {
       const reply = await this.hmgFlow.handleInbound(conversation, input.text);
       replyText = reply.replyText;
       baileysList = reply.baileysList;
+      telnyxButtons = reply.telnyxButtons;
       silent = Boolean(reply.silent);
     } else {
       const reply = await this.techfindIntake.handleInbound(
@@ -316,6 +319,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         ...telnyxJobFields,
         ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
         ...(baileysList ? { baileysList } : {}),
+        ...(telnyxButtons ? { telnyxButtons } : {}),
       },
     ];
     await this.outbound.sendAll(outboundJobs);
