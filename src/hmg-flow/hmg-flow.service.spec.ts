@@ -118,14 +118,14 @@ describe('HmgFlowService', () => {
     );
   });
 
-  it('completes tax path when KRA status is chosen', async () => {
+  it('after KRA status, asks how soon to speak with an advisor', async () => {
     sessions.findActive.mockResolvedValue({
       id: 'sess-1',
       conversationId: 'conv-1',
       currentStep: HMG_STEPS.AWAITING_KRA_STATUS,
       payload: {
         serviceId: 'tax_kra',
-        entityId: 'ngo_sacco_trust',
+        entityId: 'sole_proprietor',
         businessName: 'ACME',
       },
     } as never);
@@ -135,10 +135,65 @@ describe('HmgFlowService', () => {
       payload: next.payload,
     }));
 
-    const reply = await service.handleInbound(conversation, 'kra_notice');
+    const reply = await service.handleInbound(conversation, 'filings_up_to_date');
+    expect(reply.replyText).toContain('speak with an advisor');
+    expect(reply.baileysList?.sections[0].rows).toHaveLength(4);
+    expect(sessions.markSubmitted).not.toHaveBeenCalled();
+  });
+
+  it('completes tax path through booking details', async () => {
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_BOOKING_PHONE,
+      payload: {
+        serviceId: 'tax_kra',
+        entityId: 'sole_proprietor',
+        businessName: 'ACME',
+        kraStatusId: 'filings_up_to_date',
+        timingId: 'urgent_deadline',
+        meetingId: 'office_akai_plaza',
+        requestId: 'book_consultation',
+        contactName: 'miki',
+      },
+    } as never);
+    sessions.save.mockImplementation(async (session, next) => ({
+      ...session,
+      currentStep: next.step,
+      payload: next.payload,
+    }));
+
+    const reply = await service.handleInbound(conversation, '0799229340');
+    expect(reply.replyText).toContain('Thank you, miki');
+    expect(reply.replyText).toContain('Consultation Requested');
+    expect(reply.replyText).toContain('Akai Plaza');
+    expect(reply.replyText).toContain('0799229340');
+    expect(sessions.markSubmitted).toHaveBeenCalled();
+  });
+
+  it('completes tax path when advisor call is chosen', async () => {
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_PUT_THROUGH,
+      payload: {
+        serviceId: 'tax_kra',
+        entityId: 'sole_proprietor',
+        businessName: 'ACME',
+        kraStatusId: 'filings_up_to_date',
+        timingId: 'this_week',
+        meetingId: 'phone_call',
+      },
+    } as never);
+    sessions.save.mockImplementation(async (session, next) => ({
+      ...session,
+      currentStep: next.step,
+      payload: next.payload,
+    }));
+
+    const reply = await service.handleInbound(conversation, 'advisor_call_me');
     expect(reply.replyText).toContain('HMG-');
-    expect(reply.replyText).toContain('KRA notice');
-    expect(reply.replyText).toContain('ACME');
+    expect(reply.replyText).toContain('Advisor call');
     expect(sessions.markSubmitted).toHaveBeenCalled();
   });
 });

@@ -14,18 +14,28 @@ import * as copy from './hmg-copy';
 import {
   hmgEntityListMessage,
   hmgKraStatusListMessage,
+  hmgMeetingListMessage,
+  hmgPutThroughListMessage,
+  hmgTimingListMessage,
   hmgTopicListMessage,
 } from './hmg-interactive';
 import {
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
+  HMG_MEETING_OPTIONS,
+  HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
+  HMG_TIMING_OPTIONS,
   hmgServiceNeedsEntityStep,
 } from './hmg-options';
 import { HmgSession } from './hmg-session.entity';
 import { HmgSessionService } from './hmg-session.service';
 import type { HmgPayload } from './hmg-payload';
 import { HMG_STEPS } from './hmg-steps';
+import {
+  formatKenyanPhoneDisplay,
+  parseKenyanPhone,
+} from '../enquiry-flow/parse-kenyan-phone';
 
 export type HmgReply = {
   replyText: string;
@@ -110,6 +120,21 @@ export class HmgFlowService {
     }
     if (session.currentStep === HMG_STEPS.AWAITING_KRA_STATUS) {
       return this.handleKraStatusStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_TIMING) {
+      return this.handleTimingStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_MEETING) {
+      return this.handleMeetingStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_PUT_THROUGH) {
+      return this.handlePutThroughStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_BOOKING_NAME) {
+      return this.handleBookingNameStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_BOOKING_PHONE) {
+      return this.handleBookingPhoneStep(session, text);
     }
     if (session.currentStep === HMG_STEPS.AWAITING_BRIEF) {
       return this.handleBriefStep(session, text);
@@ -225,6 +250,150 @@ export class HmgFlowService {
       ...session.payload,
       kraStatusId: matched.id,
     };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_TIMING,
+      payload,
+    });
+    const list = hmgTimingListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handleTimingStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_TIMING_OPTIONS);
+    if (!matched) {
+      const list = hmgTimingListMessage();
+      return {
+        replyText: copy.hmgTimingReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_TIMING_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      timingId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_MEETING,
+      payload,
+    });
+    const list = hmgMeetingListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handleMeetingStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_MEETING_OPTIONS);
+    if (!matched) {
+      const list = hmgMeetingListMessage();
+      return {
+        replyText: copy.hmgMeetingReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_MEETING_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      meetingId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_PUT_THROUGH,
+      payload,
+    });
+    const list = hmgPutThroughListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handlePutThroughStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_PUT_THROUGH_OPTIONS);
+    if (!matched) {
+      const list = hmgPutThroughListMessage();
+      return {
+        replyText: copy.hmgPutThroughReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_PUT_THROUGH_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      requestId: matched.id,
+    };
+
+    if (matched.id === 'book_consultation') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_BOOKING_NAME,
+        payload,
+      });
+      return { replyText: copy.HMG_BOOKING_NAME_PROMPT };
+    }
+
+    return this.finalizeTaxKraSession(session, payload);
+  }
+
+  private async handleBookingNameStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    if (text.length < 2) {
+      return { replyText: copy.hmgBookingNameReask() };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      contactName: text,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_BOOKING_PHONE,
+      payload,
+    });
+    return { replyText: copy.HMG_BOOKING_PHONE_PROMPT };
+  }
+
+  private async handleBookingPhoneStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const normalized = parseKenyanPhone(text);
+    if (!normalized) {
+      return { replyText: copy.hmgBookingPhoneReask() };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      contactPhone: formatKenyanPhoneDisplay(normalized).replace(/\s/g, ''),
+    };
+    return this.finalizeTaxKraSession(session, payload);
+  }
+
+  private async finalizeTaxKraSession(
+    session: HmgSession,
+    payload: HmgPayload,
+  ): Promise<HmgReply> {
     const reference = createHmgReference();
     await this.sessions.save(session, {
       step: HMG_STEPS.SUBMITTED,

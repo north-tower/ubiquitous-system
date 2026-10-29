@@ -109,3 +109,81 @@ export function hmgKraStatusLabel(kraStatusId: string): string {
     kraStatusId
   );
 }
+
+export const HMG_TIMING_OPTIONS: NumberedOption[] = [
+  {
+    id: 'urgent_deadline',
+    label: "It's urgent — there's a deadline",
+    aliases: ['urgent', 'deadline', 'urgent deadline'],
+  },
+  {
+    id: 'this_week',
+    label: 'This week',
+    aliases: ['week', 'this week'],
+  },
+  {
+    id: 'next_week',
+    label: 'Next week',
+    aliases: ['next week'],
+  },
+  {
+    id: 'exploring',
+    label: 'Just exploring for now',
+    aliases: ['exploring', 'just exploring'],
+  },
+];
+
+export function hmgTimingLabel(timingId: string): string {
+  return (
+    HMG_TIMING_OPTIONS.find((option) => option.id === timingId)?.label ??
+    timingId
+  );
+}
+
+export const HMG_MEETING_OPTIONS: NumberedOption[] = [
+  {
+    id: 'office_akai_plaza',
+    label: 'At your offices, Akai Plaza',
+    aliases: ['akai plaza', 'office', 'in person', 'offices'],
+  },
+  {
+    id: 'phone_call',
+    label: 'Phone call',
+    aliases: ['phone', 'call'],
+  },
+  {
+    id: 'online_meeting',
+    label: 'Online meeting',
+    aliases: ['online', 'video', 'zoom', 'teams'],
+  },
+];
+
+export function hmgMeetingLabel(meetingId: string): string {
+  return (
+    HMG_MEETING_OPTIONS.find((option) => option.id === meetingId)?.label ??
+    meetingId
+  );
+}
+
+export const HMG_PUT_THROUGH_OPTIONS: NumberedOption[] = [
+  {
+    id: 'book_consultation',
+    label: 'Book the consultation',
+    aliases: ['book', 'book consultation', 'consultation'],
+  },
+  {
+    id: 'advisor_call_me',
+    label: 'Have an advisor call me',
+    aliases: ['call me', 'advisor call', 'callback'],
+  },
+];
+
+export function hmgRequestLabel(requestId: string): string {
+  if (requestId === 'advisor_call_me') {
+    return 'Advisor call';
+  }
+  if (requestId === 'book_consultation') {
+    return 'Consultation';
+  }
+  return requestId;
+}

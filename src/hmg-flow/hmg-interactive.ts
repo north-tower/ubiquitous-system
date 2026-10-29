@@ -2,7 +2,10 @@ import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-int
 import {
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
+  HMG_MEETING_OPTIONS,
+  HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
+  HMG_TIMING_OPTIONS,
 } from './hmg-options';
 import * as copy from './hmg-copy';
 
@@ -32,11 +35,32 @@ const HMG_KRA_STATUS_ROW_DISPLAY: Record<string, string> = {
   not_sure: '❓ Honestly not sure',
 };
 
+const HMG_TIMING_ROW_DISPLAY: Record<string, string> = {
+  urgent_deadline: "🔥 It's urgent — deadline",
+  this_week: 'This week',
+  next_week: 'Next week',
+  exploring: 'Just exploring for now',
+};
+
+const HMG_MEETING_ROW_DISPLAY: Record<string, string> = {
+  office_akai_plaza: '🏢 At your offices, Akai Plaza',
+  phone_call: '📞 Phone call',
+  online_meeting: '💻 Online meeting',
+};
+
+const HMG_PUT_THROUGH_ROW_DISPLAY: Record<string, string> = {
+  book_consultation: '🗓️ Book the consultation',
+  advisor_call_me: '📞 Have an advisor call me',
+};
+
 function waListRowTitle(optionId: string, fallbackLabel: string): string {
   const preferred =
     HMG_LIST_ROW_DISPLAY[optionId] ??
     HMG_ENTITY_ROW_DISPLAY[optionId] ??
     HMG_KRA_STATUS_ROW_DISPLAY[optionId] ??
+    HMG_TIMING_ROW_DISPLAY[optionId] ??
+    HMG_MEETING_ROW_DISPLAY[optionId] ??
+    HMG_PUT_THROUGH_ROW_DISPLAY[optionId] ??
     fallbackLabel;
   if (preferred.length <= WA_LIST_ROW_TITLE_MAX) {
     return preferred;
@@ -102,6 +126,75 @@ export function hmgKraStatusListMessage(): BaileysListMessageSpec {
           title: waListRowTitle(
             option.id,
             HMG_KRA_STATUS_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgTimingListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_TIMING_PROMPT,
+    title: 'Timing',
+    buttonText: 'Choose timing',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'How soon?',
+        rows: HMG_TIMING_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_TIMING_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgMeetingListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_MEETING_PROMPT,
+    title: 'Meeting',
+    buttonText: 'Choose format',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Preferred format',
+        rows: HMG_MEETING_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_MEETING_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgPutThroughListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_PUT_THROUGH_PROMPT,
+    title: 'Next step',
+    buttonText: 'Choose action',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'How should we proceed?',
+        rows: HMG_PUT_THROUGH_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_PUT_THROUGH_ROW_DISPLAY[option.id] ?? option.label,
           ),
           description: option.label,
         })),

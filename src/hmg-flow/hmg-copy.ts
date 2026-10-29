@@ -2,11 +2,17 @@ import { formatNumberedOptions } from '../enquiry-flow/match-numbered-option';
 import {
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
+  HMG_MEETING_OPTIONS,
+  HMG_PUT_THROUGH_OPTIONS,
   HMG_SERVICE_OPTIONS,
+  HMG_TIMING_OPTIONS,
   hmgEntityIsPersonal,
   hmgEntityLabel,
   hmgKraStatusLabel,
+  hmgMeetingLabel,
+  hmgRequestLabel,
   hmgServiceLabel,
+  hmgTimingLabel,
 } from './hmg-options';
 import type { HmgPayload } from './hmg-payload';
 
@@ -62,6 +68,68 @@ export function hmgKraStatusReask(): string {
   ].join('\n');
 }
 
+export const HMG_TIMING_PROMPT =
+  'How soon would you like to speak with an advisor?';
+
+export function hmgTimingReask(): string {
+  return [
+    HMG_TIMING_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_TIMING_OPTIONS),
+  ].join('\n');
+}
+
+export const HMG_MEETING_PROMPT = 'And how would you prefer to meet?';
+
+export function hmgMeetingReask(): string {
+  return [
+    HMG_MEETING_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_MEETING_OPTIONS),
+  ].join('\n');
+}
+
+export const HMG_PUT_THROUGH_PROMPT = [
+  'Thank you 👍 Our advisors are available Monday to Friday, 8:00 AM – 5:00 PM.',
+  'Shall I put this through?',
+].join('\n');
+
+export function hmgPutThroughReask(): string {
+  return [
+    HMG_PUT_THROUGH_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_PUT_THROUGH_OPTIONS),
+  ].join('\n');
+}
+
+export const HMG_BOOKING_NAME_PROMPT =
+  'Certainly 👍 What name should we put on the booking?';
+
+export function hmgBookingNameReask(): string {
+  return [
+    HMG_BOOKING_NAME_PROMPT,
+    '',
+    'Send at least a couple of characters so we can note it on your request.',
+  ].join('\n');
+}
+
+export const HMG_BOOKING_PHONE_PROMPT =
+  "And what's the best phone number to reach you?";
+
+export function hmgBookingPhoneReask(): string {
+  return [
+    HMG_BOOKING_PHONE_PROMPT,
+    '',
+    'Send a Kenyan mobile number (e.g. 07XX XXX XXX).',
+  ].join('\n');
+}
+
 export function hmgBriefPrompt(serviceId: string): string {
   const label = hmgServiceLabel(serviceId);
   return [
@@ -87,10 +155,16 @@ export function hmgTaxKraSubmitted(
   const nameLabel = hmgEntityIsPersonal(payload.entityId ?? '')
     ? 'Name'
     : 'Business';
-  return [
-    `Thank you — your consultation request is logged as *${reference}*.`,
+  const contactName = payload.contactName?.trim();
+  const lines = [
+    contactName
+      ? `✅ Thank you, ${contactName}. Your consultation request has been captured. An advisor would now confirm a time with you and let you know what to have ready.`
+      : '✅ Thank you. Your consultation request has been captured. An advisor will follow up on WhatsApp shortly.',
     '',
-    `• Service: ${label}`,
+    '🗓️ *Consultation Requested*',
+    '_Sent to the HMG Group Africa advisory team_',
+    '',
+    `• Enquiry: ${label}`,
     ...(payload.entityId
       ? [`• Client type: ${hmgEntityLabel(payload.entityId)}`]
       : []),
@@ -100,9 +174,23 @@ export function hmgTaxKraSubmitted(
     ...(payload.kraStatusId
       ? [`• KRA status: ${hmgKraStatusLabel(payload.kraStatusId)}`]
       : []),
+    ...(payload.timingId
+      ? [`• Timing: ${hmgTimingLabel(payload.timingId)}`]
+      : []),
+    ...(payload.meetingId
+      ? [`• Consultation: ${hmgMeetingLabel(payload.meetingId)}`]
+      : []),
+    ...(payload.requestId
+      ? [`• Request: ${hmgRequestLabel(payload.requestId)}`]
+      : []),
+    ...(contactName ? [`• Name: ${contactName}`] : []),
+    ...(payload.contactPhone
+      ? [`• Phone: ${payload.contactPhone}`]
+      : []),
     '',
-    'A team member will follow up on WhatsApp. Type *reset* to start again.',
-  ].join('\n');
+    `Reference: *${reference}* · Type *reset* to start again.`,
+  ];
+  return lines.join('\n');
 }
 
 export function hmgSubmitted(
