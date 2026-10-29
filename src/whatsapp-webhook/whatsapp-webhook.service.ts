@@ -14,6 +14,7 @@ import type {
 } from '../enquiry-flow/enquiry-twilio-reply';
 import { InsightfulPosError } from '../insightful-pos/insightful-pos.types';
 import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
+import { HmgFlowService } from '../hmg-flow/hmg-flow.service';
 import {
   BaileysWhatsappClient,
   type BaileysInboundNotice,
@@ -45,6 +46,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     private readonly techfindIntake: TechfindIntakeFlowService,
     private readonly enquiryFlow: EnquiryFlowService,
     private readonly posOpsFlow: PosOpsFlowService,
+    private readonly hmgFlow: HmgFlowService,
     private readonly outbound: OutboundMessageService,
     private readonly baileys: BaileysWhatsappClient,
     private readonly stateMachine: ConversationStateMachineService,
@@ -261,6 +263,11 @@ export class WhatsappWebhookService implements OnModuleInit {
         input.text,
       );
       replyText = reply.replyText;
+      silent = Boolean(reply.silent);
+    } else if (input.flow === 'hmg_consultation') {
+      const reply = await this.hmgFlow.handleInbound(conversation, input.text);
+      replyText = reply.replyText;
+      baileysList = reply.baileysList;
       silent = Boolean(reply.silent);
     } else {
       const reply = await this.techfindIntake.handleInbound(

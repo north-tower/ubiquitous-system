@@ -91,7 +91,9 @@ export class ConversationStateMachineService {
 
     conversation.demoMode = null;
     conversation.currentState =
-      flow === 'enquiry_intake' || flow === 'pos_ops'
+      flow === 'enquiry_intake' ||
+      flow === 'pos_ops' ||
+      flow === 'hmg_consultation'
         ? ConversationState.NEW
         : ConversationState.TECHFIND_GREETING;
 

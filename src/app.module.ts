@@ -10,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { DemoEngineModule } from './demo-engine/demo-engine.module';
 import { DivineBudgetModule } from './divine-budget/divine-budget.module';
 import { EnquiryFlowModule } from './enquiry-flow/enquiry-flow.module';
+import { HmgFlowModule } from './hmg-flow/hmg-flow.module';
 import { PosOpsFlowModule } from './pos-ops-flow/pos-ops-flow.module';
 import { ConnectModule } from './connect/connect.module';
 import { PortalModule } from './portal/portal.module';
@@ -34,6 +35,7 @@ import { WhatsappWebhookModule } from './whatsapp-webhook/whatsapp-webhook.modul
     DivineBudgetModule,
     EnquiryFlowModule,
     PosOpsFlowModule,
+    HmgFlowModule,
     ConnectModule,
     PortalModule,
     OutboundModule,

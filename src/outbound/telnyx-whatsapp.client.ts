@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { toDigits, type WhatsappSender } from './whatsapp-channel';
+import {
+  buildTelnyxWhatsappInteractiveListBody,
+} from './telnyx-interactive-list';
 
 export class TelnyxSendError extends Error {
   constructor(
@@ -159,6 +163,49 @@ export class TelnyxWhatsappClient implements WhatsappSender {
       messagingProfileId,
     });
 
+    return this.postWhatsappMessage(apiKey, from, messagingProfileId, requestBody);
+  }
+
+  async sendInteractiveList(
+    to: string,
+    list: BaileysListMessageSpec,
+    fromOverride?: string,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    const apiKey = this.config.get<string>('TELNYX_API_KEY');
+    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
+    const fromRaw = fromOverride?.trim() || configuredFrom;
+    if (!apiKey || !fromRaw) {
+      throw new Error(
+        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
+      );
+    }
+
+    const from = toE164(fromRaw);
+    const toAddress = toE164(to);
+
+    const messagingProfileId = await resolveMessagingProfileId(
+      apiKey,
+      from,
+      this.config.get<string>('TELNYX_MESSAGING_PROFILE_ID'),
+      this.messagingProfileCache,
+    );
+
+    const requestBody = buildTelnyxWhatsappInteractiveListBody({
+      from,
+      to: toAddress,
+      list,
+      messagingProfileId,
+    });
+
+    return this.postWhatsappMessage(apiKey, from, messagingProfileId, requestBody);
+  }
+
+  private async postWhatsappMessage(
+    apiKey: string,
+    from: string,
+    messagingProfileId: string | null,
+    requestBody: Record<string, unknown>,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
     const response = await fetch('https://api.telnyx.com/v2/messages/whatsapp', {
       method: 'POST',
       headers: {
@@ -181,7 +228,7 @@ export class TelnyxWhatsappClient implements WhatsappSender {
         typeof raw === 'string' ? raw : JSON.stringify(raw);
       const hint =
         bodyText.includes('10004') || bodyText.includes('Invalid source number')
-          ? ` Telnyx rejected from=${from} (profile=${messagingProfileId ?? 'none'}). Set TELNYX_MESSAGING_PROFILE_ID to the WhatsApp messaging profile UUID and assign +254786487316 under Messaging → WhatsApp → Manage Numbers in the Telnyx portal.`
+          ? ` Telnyx rejected from=${from} (profile=${messagingProfileId ?? 'none'}). Set TELNYX_MESSAGING_PROFILE_ID to the WhatsApp messaging profile UUID and assign your WhatsApp number under Messaging → WhatsApp → Manage Numbers in the Telnyx portal.`
           : '';
       throw new TelnyxSendError(
         response.status,

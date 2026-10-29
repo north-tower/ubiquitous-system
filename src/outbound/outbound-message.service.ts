@@ -77,6 +77,9 @@ export class OutboundMessageService {
     if (await this.trySendBaileysList(job)) {
       return;
     }
+    if (await this.trySendTelnyxList(job)) {
+      return;
+    }
 
     const contentSend = this.resolveTwilioContentSend(job);
     if (contentSend) {
@@ -199,6 +202,47 @@ export class OutboundMessageService {
         return { ...result, contentVariables: flowVars };
       }
       throw error;
+    }
+  }
+
+  private async trySendTelnyxList(job: OutboundTextJob): Promise<boolean> {
+    if (job.channel !== 'telnyx' || !job.baileysList) {
+      return false;
+    }
+    const listSummary = summarizeBaileysList(job.baileysList);
+    this.logger.log(
+      `Telnyx list attempt conversation=${job.conversationId} to=${job.to} ${JSON.stringify(listSummary)}`,
+    );
+    try {
+      const sent = await this.router.sendTelnyxList(
+        job.to,
+        job.baileysList,
+        job.telnyxFrom,
+      );
+      await this.conversations.recordOutbound({
+        conversationId: job.conversationId,
+        text: job.text,
+        rawPayload: {
+          channel: sent.channel,
+          messageId: sent.messageId,
+          telnyxInteractiveList: job.baileysList,
+          response: sent.raw,
+        },
+      });
+      this.logger.log(
+        `Sent Telnyx list conversation=${job.conversationId} to=${job.to}`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Telnyx list send failed, falling back to text conversation=${job.conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      if (job.baileysList.text.trim()) {
+        job.text = job.baileysList.text;
+      }
+      return false;
     }
   }
 

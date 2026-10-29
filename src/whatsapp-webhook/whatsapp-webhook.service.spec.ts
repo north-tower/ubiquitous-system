@@ -4,6 +4,7 @@ import { TechfindIntakeFlowService } from '../techfind-intake/techfind-intake-fl
 import { ConversationService } from '../conversation/conversation.service';
 import { EnquiryFlowService } from '../enquiry-flow/enquiry-flow.service';
 import { PosOpsFlowService } from '../pos-ops-flow/pos-ops-flow.service';
+import { HmgFlowService } from '../hmg-flow/hmg-flow.service';
 import { BaileysWhatsappClient } from '../outbound/baileys-whatsapp.client';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
 import { ConversationState } from '../state-machine/conversation-state.enum';
@@ -28,6 +29,9 @@ describe('WhatsappWebhookService', () => {
     handleInbound: jest.fn(),
   };
   const posOpsFlow = {
+    handleInbound: jest.fn(),
+  };
+  const hmgFlow = {
     handleInbound: jest.fn(),
   };
   const outbound = {
@@ -55,6 +59,7 @@ describe('WhatsappWebhookService', () => {
       techfindIntake as unknown as TechfindIntakeFlowService,
       enquiryFlow as unknown as EnquiryFlowService,
       posOpsFlow as unknown as PosOpsFlowService,
+      hmgFlow as unknown as HmgFlowService,
       outbound as unknown as OutboundMessageService,
       baileys as unknown as BaileysWhatsappClient,
       stateMachine as never,

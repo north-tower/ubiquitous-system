@@ -80,6 +80,18 @@ export class WhatsappSendRouter {
     return { channel: 'baileys', ...result };
   }
 
+  async sendTelnyxList(
+    to: string,
+    list: BaileysListMessageSpec,
+    telnyxFrom?: string,
+  ): Promise<WhatsappSendResult> {
+    if (!this.telnyx.isConfigured()) {
+      throw new Error('Telnyx is not configured.');
+    }
+    const result = await this.telnyx.sendInteractiveList(to, list, telnyxFrom);
+    return { channel: 'telnyx', ...result };
+  }
+
   async sendContent(
     to: string,
     contentSid: string,

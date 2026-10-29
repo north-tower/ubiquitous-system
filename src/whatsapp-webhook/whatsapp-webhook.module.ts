@@ -3,6 +3,7 @@ import { TechfindIntakeModule } from '../techfind-intake/techfind-intake.module'
 import { ConversationModule } from '../conversation/conversation.module';
 import { EnquiryFlowModule } from '../enquiry-flow/enquiry-flow.module';
 import { PosOpsFlowModule } from '../pos-ops-flow/pos-ops-flow.module';
+import { HmgFlowModule } from '../hmg-flow/hmg-flow.module';
 import { OutboundModule } from '../outbound/outbound.module';
 import { StateMachineModule } from '../state-machine/state-machine.module';
 import { TenantModule } from '../tenant/tenant.module';
@@ -18,6 +19,7 @@ import { WhatsappWebhookService } from './whatsapp-webhook.service';
     TechfindIntakeModule,
     EnquiryFlowModule,
     PosOpsFlowModule,
+    HmgFlowModule,
     OutboundModule,
     StateMachineModule,
   ],
