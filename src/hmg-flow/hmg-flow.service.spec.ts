@@ -237,6 +237,106 @@ describe('HmgFlowService', () => {
     expect(sessions.markSubmitted).toHaveBeenCalled();
   });
 
+  it('accepts audit and follows entity, business name, and audit purpose path', async () => {
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_TOPIC,
+      payload: {},
+    } as never);
+    sessions.save.mockImplementation(async (session, next) => ({
+      ...session,
+      currentStep: next.step,
+      payload: next.payload,
+    }));
+
+    const topicReply = await service.handleInbound(conversation, 'audit');
+    expect(topicReply.replyText).toContain('business or for you personally');
+    expect(sessions.save).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: HMG_STEPS.AWAITING_ENTITY,
+        payload: expect.objectContaining({ serviceId: 'audit' }),
+      }),
+    );
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_ENTITY,
+      payload: { serviceId: 'audit' },
+    } as never);
+
+    const entityReply = await service.handleInbound(
+      conversation,
+      'sole_proprietor',
+    );
+    expect(entityReply.replyText).toContain('name of the business');
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_BUSINESS_NAME,
+      payload: { serviceId: 'audit', entityId: 'sole_proprietor' },
+    } as never);
+
+    const nameReply = await service.handleInbound(conversation, 'ACME');
+    expect(nameReply.replyText).toContain('What is the audit for?');
+    expect(sessions.save).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: HMG_STEPS.AWAITING_AUDIT_PURPOSE,
+        payload: expect.objectContaining({ businessName: 'ACME' }),
+      }),
+    );
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_AUDIT_PURPOSE,
+      payload: {
+        serviceId: 'audit',
+        entityId: 'sole_proprietor',
+        businessName: 'ACME',
+      },
+    } as never);
+
+    const purposeReply = await service.handleInbound(
+      conversation,
+      'statutory_audit',
+    );
+    expect(purposeReply.replyText).toContain('speak with an advisor');
+    expect(sessions.save).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        step: HMG_STEPS.AWAITING_TIMING,
+        payload: expect.objectContaining({ auditPurposeId: 'statutory_audit' }),
+      }),
+    );
+
+    sessions.findActive.mockResolvedValue({
+      id: 'sess-1',
+      conversationId: 'conv-1',
+      currentStep: HMG_STEPS.AWAITING_BOOKING_PHONE,
+      payload: {
+        serviceId: 'audit',
+        entityId: 'sole_proprietor',
+        businessName: 'ACME',
+        auditPurposeId: 'statutory_audit',
+        timingId: 'urgent_deadline',
+        meetingId: 'office_akai_plaza',
+        requestId: 'book_consultation',
+        contactName: 'MIKI',
+      },
+    } as never);
+
+    const doneReply = await service.handleInbound(conversation, '0799229340');
+    expect(doneReply.replyText).toContain('Thank you, MIKI');
+    expect(doneReply.replyText).toContain('Audit & assurance');
+    expect(doneReply.replyText).toContain('Statutory audit');
+    expect(sessions.markSubmitted).toHaveBeenCalled();
+  });
+
   it('completes tax path when advisor call is chosen', async () => {
     sessions.findActive.mockResolvedValue({
       id: 'sess-1',

@@ -2,6 +2,7 @@ import { formatNumberedOptions } from '../enquiry-flow/match-numbered-option';
 import {
   HMG_BOOKS_HANDLING_OPTIONS,
   HMG_ENTITY_OPTIONS,
+  HMG_AUDIT_PURPOSE_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
   HMG_PUT_THROUGH_OPTIONS,
@@ -9,6 +10,7 @@ import {
   HMG_TIMING_OPTIONS,
   hmgEntityIsPersonal,
   hmgEntityLabel,
+  hmgAuditPurposeLabel,
   hmgBooksHandlingLabel,
   hmgKraStatusLabel,
   hmgMeetingLabel,
@@ -54,6 +56,18 @@ export function hmgBusinessNameReask(entityId: string): string {
     hmgBusinessNamePrompt(entityId),
     '',
     'Send at least a couple of characters so we can note it on your request.',
+  ].join('\n');
+}
+
+export const HMG_AUDIT_PURPOSE_PROMPT = 'What is the audit for?';
+
+export function hmgAuditPurposeReask(): string {
+  return [
+    HMG_AUDIT_PURPOSE_PROMPT,
+    '',
+    'Please choose an option from the list, or reply with the number:',
+    '',
+    formatNumberedOptions(HMG_AUDIT_PURPOSE_OPTIONS),
   ].join('\n');
 }
 
@@ -185,6 +199,9 @@ export function hmgTaxKraSubmitted(
       : []),
     ...(payload.businessName
       ? [`• ${nameLabel}: ${payload.businessName}`]
+      : []),
+    ...(payload.auditPurposeId
+      ? [`• Audit for: ${hmgAuditPurposeLabel(payload.auditPurposeId)}`]
       : []),
     ...(payload.kraStatusId
       ? [`• KRA status: ${hmgKraStatusLabel(payload.kraStatusId)}`]

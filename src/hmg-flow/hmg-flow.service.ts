@@ -13,6 +13,7 @@ import { isHumanHandoffState } from '../state-machine/human-handoff';
 import * as copy from './hmg-copy';
 import {
   hmgEntityListMessage,
+  hmgAuditPurposeListMessage,
   hmgBooksHandlingListMessage,
   hmgKraStatusListMessage,
   hmgMeetingListMessage,
@@ -22,6 +23,7 @@ import {
 } from './hmg-interactive';
 import {
   HMG_BOOKS_HANDLING_OPTIONS,
+  HMG_AUDIT_PURPOSE_OPTIONS,
   HMG_ENTITY_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
@@ -119,6 +121,9 @@ export class HmgFlowService {
     }
     if (session.currentStep === HMG_STEPS.AWAITING_BUSINESS_NAME) {
       return this.handleBusinessNameStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_AUDIT_PURPOSE) {
+      return this.handleAuditPurposeStep(session, text);
     }
     if (session.currentStep === HMG_STEPS.AWAITING_KRA_STATUS) {
       return this.handleKraStatusStep(session, text);
@@ -237,11 +242,54 @@ export class HmgFlowService {
       };
     }
 
+    if (serviceId === 'audit') {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_AUDIT_PURPOSE,
+        payload,
+      });
+      const list = hmgAuditPurposeListMessage();
+      return {
+        replyText: list.text,
+        baileysList: list,
+      };
+    }
+
     await this.sessions.save(session, {
       step: HMG_STEPS.AWAITING_KRA_STATUS,
       payload,
     });
     const list = hmgKraStatusListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handleAuditPurposeStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_AUDIT_PURPOSE_OPTIONS);
+    if (!matched) {
+      const list = hmgAuditPurposeListMessage();
+      return {
+        replyText: copy.hmgAuditPurposeReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_AUDIT_PURPOSE_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      auditPurposeId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_TIMING,
+      payload,
+    });
+    const list = hmgTimingListMessage();
     return {
       replyText: list.text,
       baileysList: list,

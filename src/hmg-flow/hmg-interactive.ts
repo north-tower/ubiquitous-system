@@ -1,6 +1,7 @@
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import {
   HMG_ENTITY_OPTIONS,
+  HMG_AUDIT_PURPOSE_OPTIONS,
   HMG_BOOKS_HANDLING_OPTIONS,
   HMG_KRA_STATUS_OPTIONS,
   HMG_MEETING_OPTIONS,
@@ -27,6 +28,13 @@ const HMG_ENTITY_ROW_DISPLAY: Record<string, string> = {
   sole_proprietor: '💼 Sole proprietor',
   ngo_sacco_trust: '🤝 NGO / SACCO / Trust',
   personal: '👤 Personal',
+};
+
+const HMG_AUDIT_PURPOSE_ROW_DISPLAY: Record<string, string> = {
+  statutory_audit: 'Statutory audit',
+  bank_or_lender: 'A bank or lender',
+  donor_or_grant: 'A donor or grant',
+  internal_assurance: 'Internal assurance',
 };
 
 const HMG_KRA_STATUS_ROW_DISPLAY: Record<string, string> = {
@@ -65,6 +73,7 @@ function waListRowTitle(optionId: string, fallbackLabel: string): string {
   const preferred =
     HMG_LIST_ROW_DISPLAY[optionId] ??
     HMG_ENTITY_ROW_DISPLAY[optionId] ??
+    HMG_AUDIT_PURPOSE_ROW_DISPLAY[optionId] ??
     HMG_KRA_STATUS_ROW_DISPLAY[optionId] ??
     HMG_BOOKS_HANDLING_ROW_DISPLAY[optionId] ??
     HMG_TIMING_ROW_DISPLAY[optionId] ??
@@ -111,6 +120,28 @@ export function hmgEntityListMessage(): BaileysListMessageSpec {
           title: waListRowTitle(
             option.id,
             HMG_ENTITY_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgAuditPurposeListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_AUDIT_PURPOSE_PROMPT,
+    title: 'Audit purpose',
+    buttonText: 'Choose purpose',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'What is it for?',
+        rows: HMG_AUDIT_PURPOSE_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_AUDIT_PURPOSE_ROW_DISPLAY[option.id] ?? option.label,
           ),
         })),
       },

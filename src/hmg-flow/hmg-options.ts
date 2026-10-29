@@ -73,7 +73,41 @@ export function hmgEntityLabel(entityId: string): string {
 }
 
 export function hmgServiceNeedsEntityStep(serviceId: string): boolean {
-  return serviceId === 'tax_kra' || serviceId === 'accounting';
+  return (
+    serviceId === 'tax_kra' ||
+    serviceId === 'accounting' ||
+    serviceId === 'audit'
+  );
+}
+
+export const HMG_AUDIT_PURPOSE_OPTIONS: NumberedOption[] = [
+  {
+    id: 'statutory_audit',
+    label: 'Statutory audit',
+    aliases: ['statutory', 'statutory audit'],
+  },
+  {
+    id: 'bank_or_lender',
+    label: 'A bank or lender',
+    aliases: ['bank', 'lender', 'loan'],
+  },
+  {
+    id: 'donor_or_grant',
+    label: 'A donor or grant',
+    aliases: ['donor', 'grant'],
+  },
+  {
+    id: 'internal_assurance',
+    label: 'Internal assurance',
+    aliases: ['internal', 'internal assurance', 'assurance'],
+  },
+];
+
+export function hmgAuditPurposeLabel(auditPurposeId: string): string {
+  return (
+    HMG_AUDIT_PURPOSE_OPTIONS.find((option) => option.id === auditPurposeId)
+      ?.label ?? auditPurposeId
+  );
 }
 
 export const HMG_BOOKS_HANDLING_OPTIONS: NumberedOption[] = [
