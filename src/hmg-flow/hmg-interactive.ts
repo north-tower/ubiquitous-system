@@ -1,5 +1,9 @@
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
-import { HMG_SERVICE_OPTIONS } from './hmg-options';
+import {
+  HMG_ENTITY_OPTIONS,
+  HMG_KRA_STATUS_OPTIONS,
+  HMG_SERVICE_OPTIONS,
+} from './hmg-options';
 import * as copy from './hmg-copy';
 
 /** WhatsApp list row titles are capped at 24 characters (Meta Cloud API). */
@@ -14,8 +18,26 @@ const HMG_LIST_ROW_DISPLAY: Record<string, string> = {
   something_else: '💬 Something else',
 };
 
+const HMG_ENTITY_ROW_DISPLAY: Record<string, string> = {
+  limited_company: '🏢 Limited company',
+  sole_proprietor: '💼 Sole proprietor',
+  ngo_sacco_trust: '🤝 NGO / SACCO / Trust',
+  personal: '👤 Personal',
+};
+
+const HMG_KRA_STATUS_ROW_DISPLAY: Record<string, string> = {
+  filings_up_to_date: '✅ All filings up to date',
+  behind_filings: '⏳ Behind on some filings',
+  kra_notice: "⚠️ We've received a KRA notice",
+  not_sure: '❓ Honestly not sure',
+};
+
 function waListRowTitle(optionId: string, fallbackLabel: string): string {
-  const preferred = HMG_LIST_ROW_DISPLAY[optionId] ?? fallbackLabel;
+  const preferred =
+    HMG_LIST_ROW_DISPLAY[optionId] ??
+    HMG_ENTITY_ROW_DISPLAY[optionId] ??
+    HMG_KRA_STATUS_ROW_DISPLAY[optionId] ??
+    fallbackLabel;
   if (preferred.length <= WA_LIST_ROW_TITLE_MAX) {
     return preferred;
   }
@@ -35,6 +57,52 @@ export function hmgTopicListMessage(): BaileysListMessageSpec {
         rows: HMG_SERVICE_OPTIONS.map((option) => ({
           rowId: option.id,
           title: waListRowTitle(option.id, option.label),
+          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgEntityListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_ENTITY_PROMPT,
+    title: 'Client type',
+    buttonText: 'Choose type',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Who is this for?',
+        rows: HMG_ENTITY_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_ENTITY_ROW_DISPLAY[option.id] ?? option.label,
+          ),
+          description: option.label,
+        })),
+      },
+    ],
+  };
+}
+
+export function hmgKraStatusListMessage(): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: copy.HMG_KRA_STATUS_PROMPT,
+    title: 'KRA status',
+    buttonText: 'Choose status',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Current situation',
+        rows: HMG_KRA_STATUS_OPTIONS.map((option) => ({
+          rowId: option.id,
+          title: waListRowTitle(
+            option.id,
+            HMG_KRA_STATUS_ROW_DISPLAY[option.id] ?? option.label,
+          ),
           description: option.label,
         })),
       },

@@ -11,8 +11,17 @@ import { matchResetCommand } from '../state-machine/match-reset-command';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import * as copy from './hmg-copy';
-import { hmgTopicListMessage } from './hmg-interactive';
-import { HMG_SERVICE_OPTIONS } from './hmg-options';
+import {
+  hmgEntityListMessage,
+  hmgKraStatusListMessage,
+  hmgTopicListMessage,
+} from './hmg-interactive';
+import {
+  HMG_ENTITY_OPTIONS,
+  HMG_KRA_STATUS_OPTIONS,
+  HMG_SERVICE_OPTIONS,
+  hmgServiceNeedsEntityStep,
+} from './hmg-options';
 import { HmgSession } from './hmg-session.entity';
 import { HmgSessionService } from './hmg-session.service';
 import type { HmgPayload } from './hmg-payload';
@@ -93,6 +102,15 @@ export class HmgFlowService {
     if (session.currentStep === HMG_STEPS.AWAITING_TOPIC) {
       return this.handleTopicStep(session, text);
     }
+    if (session.currentStep === HMG_STEPS.AWAITING_ENTITY) {
+      return this.handleEntityStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_BUSINESS_NAME) {
+      return this.handleBusinessNameStep(session, text);
+    }
+    if (session.currentStep === HMG_STEPS.AWAITING_KRA_STATUS) {
+      return this.handleKraStatusStep(session, text);
+    }
     if (session.currentStep === HMG_STEPS.AWAITING_BRIEF) {
       return this.handleBriefStep(session, text);
     }
@@ -116,11 +134,106 @@ export class HmgFlowService {
     }
 
     const payload: HmgPayload = { serviceId: matched.id };
+    if (hmgServiceNeedsEntityStep(matched.id)) {
+      await this.sessions.save(session, {
+        step: HMG_STEPS.AWAITING_ENTITY,
+        payload,
+      });
+      const list = hmgEntityListMessage();
+      return {
+        replyText: list.text,
+        baileysList: list,
+      };
+    }
+
     await this.sessions.save(session, {
       step: HMG_STEPS.AWAITING_BRIEF,
       payload,
     });
     return { replyText: copy.hmgBriefPrompt(matched.id) };
+  }
+
+  private async handleEntityStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_ENTITY_OPTIONS);
+    if (!matched) {
+      const list = hmgEntityListMessage();
+      return {
+        replyText: copy.hmgEntityReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_ENTITY_PROMPT,
+        },
+      };
+    }
+
+    const serviceId = session.payload.serviceId ?? 'tax_kra';
+    const payload: HmgPayload = {
+      ...session.payload,
+      entityId: matched.id,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_BUSINESS_NAME,
+      payload,
+    });
+    return { replyText: copy.hmgBusinessNamePrompt(matched.id) };
+  }
+
+  private async handleBusinessNameStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const entityId = session.payload.entityId ?? 'limited_company';
+    if (text.length < 2) {
+      return { replyText: copy.hmgBusinessNameReask(entityId) };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      businessName: text,
+    };
+    await this.sessions.save(session, {
+      step: HMG_STEPS.AWAITING_KRA_STATUS,
+      payload,
+    });
+    const list = hmgKraStatusListMessage();
+    return {
+      replyText: list.text,
+      baileysList: list,
+    };
+  }
+
+  private async handleKraStatusStep(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchNumberedOption(text, HMG_KRA_STATUS_OPTIONS);
+    if (!matched) {
+      const list = hmgKraStatusListMessage();
+      return {
+        replyText: copy.hmgKraStatusReask(),
+        baileysList: {
+          ...list,
+          text: copy.HMG_KRA_STATUS_PROMPT,
+        },
+      };
+    }
+
+    const payload: HmgPayload = {
+      ...session.payload,
+      kraStatusId: matched.id,
+    };
+    const reference = createHmgReference();
+    await this.sessions.save(session, {
+      step: HMG_STEPS.SUBMITTED,
+      payload,
+    });
+    await this.sessions.markSubmitted(session, reference);
+    return {
+      replyText: copy.hmgTaxKraSubmitted(reference, payload),
+    };
   }
 
   private async handleBriefStep(
