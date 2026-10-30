@@ -42,7 +42,7 @@ export type OutboundTextJob = {
   twilioContent?: EnquiryTwilioContentKey;
   twilioContentVariables?: Record<string, string>;
   baileysList?: BaileysListMessageSpec;
-  /** WhatsApp reply buttons (max 3). Text remains the numbered fallback. */
+  /** WhatsApp reply buttons (max 3). fallbackText replaces text if they cannot be sent. */
   replyButtons?: WhatsappReplyButtons;
 };
 
@@ -262,12 +262,14 @@ export class OutboundMessageService {
     }
     const channel = job.channel;
     if (channel !== 'baileys' && channel !== 'telnyx' && channel !== 'meta') {
+      useReplyButtonFallback(job);
       return false;
     }
     if (channel === 'baileys' && !this.baileysEnquiryInteractiveEnabled()) {
       this.logger.warn(
         `Reply buttons skipped (BAILEYS_ENQUIRY_INTERACTIVE=false) conversation=${job.conversationId}`,
       );
+      useReplyButtonFallback(job);
       return false;
     }
     this.logger.log(
@@ -301,6 +303,7 @@ export class OutboundMessageService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      useReplyButtonFallback(job);
       return false;
     }
   }
@@ -481,5 +484,12 @@ export class OutboundMessageService {
         );
       }
     }
+  }
+}
+
+function useReplyButtonFallback(job: OutboundTextJob): void {
+  const fallback = job.replyButtons?.fallbackText?.trim();
+  if (fallback) {
+    job.text = fallback;
   }
 }

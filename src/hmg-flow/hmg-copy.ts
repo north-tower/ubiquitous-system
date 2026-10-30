@@ -15,7 +15,7 @@ export const HMG_NAME_PROMPT = "Last step. What's your name?";
 export const HMG_OTHER_PROMPT =
   'Tell us briefly what you need, and we will get back to you.';
 
-export const HMG_TAP_OR_REPLY = 'Reply with a number, or tap a button.';
+export const HMG_REPLY_WITH_NUMBER = 'Reply with a number.';
 
 export const HMG_DISCOVERY_NOTE =
   'Details will be covered on your discovery call.';

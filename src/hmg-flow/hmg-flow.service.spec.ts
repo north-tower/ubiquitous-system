@@ -66,7 +66,10 @@ describe('HmgFlowService', () => {
   it('opens with three menu buttons', async () => {
     const reply = await service.handleInbound(conversation, 'Hello there');
     expect(reply.replyText).toContain('HMG Group Africa');
-    expect(reply.replyText).toContain('Reply with a number, or tap a button.');
+    expect(reply.replyText).not.toContain('1  Tax');
+    expect(reply.replyButtons?.text).not.toContain('Books & people');
+    expect(reply.replyButtons?.fallbackText).toContain('1  Tax');
+    expect(reply.replyButtons?.fallbackText).toContain('Reply with a number.');
     expect(reply.replyButtons?.buttons.map((button) => button.title)).toEqual([
       'Tax',
       'Books & people',

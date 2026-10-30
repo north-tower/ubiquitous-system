@@ -10,8 +10,11 @@ export type WhatsappReplyButton = {
 };
 
 export type WhatsappReplyButtons = {
+  /** Body shown above the buttons. Does not repeat the button labels. */
   text: string;
   buttons: WhatsappReplyButton[];
+  /** Numbered plain text used only when the buttons cannot be sent. */
+  fallbackText?: string;
 };
 
 function clamp(text: string, max: number): string {

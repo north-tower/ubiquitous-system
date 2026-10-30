@@ -20,9 +20,14 @@ function buttonMessage(
   choices: readonly HmgChoice[],
 ): WhatsappReplyButtons {
   return {
-    text: [intro, '', numberedLines(choices), '', copy.HMG_TAP_OR_REPLY].join(
-      '\n',
-    ),
+    text: intro,
+    fallbackText: [
+      intro,
+      '',
+      numberedLines(choices),
+      '',
+      copy.HMG_REPLY_WITH_NUMBER,
+    ].join('\n'),
     buttons: choices.map((choice) => ({
       id: choice.id,
       title: choice.title,
