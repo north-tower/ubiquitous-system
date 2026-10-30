@@ -26,6 +26,7 @@ import {
   phoneDigitsFromJid,
 } from './baileys-lid';
 import { randomBytes } from 'crypto';
+import { buildBaileysNativeFlowButtonMessage } from './baileys-button-send';
 import {
   baileysListRelayAdditionalNodes,
   buildBaileysListWaPayload,
@@ -34,6 +35,7 @@ import {
   resolveBaileysListWireFormat,
   type BaileysSendListPayload,
 } from './baileys-list-send';
+import type { WhatsappReplyButtons } from './whatsapp-reply-buttons';
 import {
   jidAddressingKind,
   normalizeWhatsAppUserJid,
@@ -517,6 +519,54 @@ export class BaileysWhatsappClient
     }
     this.logger.log(
       `Baileys sendList ok tenant=${session.tenantId} to=${to} messageId=${messageId} contentKeys=${contentKeys}`,
+    );
+    return { messageId, raw: fullMsg };
+  }
+
+  async sendButtons(
+    to: string,
+    buttons: WhatsappReplyButtons,
+    tenantId?: string,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    const id = tenantId ?? this.defaultTenantId;
+    const session = id ? this.sessions.get(id) : undefined;
+    const sock = session?.sock;
+    if (!session || !sock) {
+      throw new Error(
+        `Baileys WhatsApp socket is not connected${id ? ` for tenant ${id}` : ''}`,
+      );
+    }
+
+    const digits = toDigits(to);
+    const lid = session.lidByPhone.get(digits);
+    const jid = lid ?? (await this.resolveJid(session, sock, to));
+    const baileys = (await import('@whiskeysockets/baileys')) as BaileysModule;
+    const userJid = sock.user?.id?.trim();
+    if (!userJid) {
+      throw new Error(
+        `Baileys session has no linked user jid tenant=${session.tenantId}`,
+      );
+    }
+    const messageSecret = randomBytes(32);
+    const buttonProto = buildBaileysNativeFlowButtonMessage(
+      buttons,
+      messageSecret,
+    );
+    this.logger.log(
+      `Baileys sendButtons tenant=${session.tenantId} to=${to} jid=${jid} count=${buttonProto.interactiveMessage.nativeFlowMessage.buttons.length}`,
+    );
+    const waMessage = baileys.proto.Message.create(buttonProto);
+    const fullMsg = baileys.generateWAMessageFromContent(jid, waMessage, {
+      userJid,
+      timestamp: new Date(),
+    });
+    const messageId = fullMsg.key?.id ?? null;
+    if (!messageId || !fullMsg.message) {
+      throw new Error('Baileys failed to build reply-button message');
+    }
+    await sock.relayMessage(jid, fullMsg.message, { messageId });
+    this.logger.log(
+      `Baileys sendButtons ok tenant=${session.tenantId} to=${to} messageId=${messageId}`,
     );
     return { messageId, raw: fullMsg };
   }

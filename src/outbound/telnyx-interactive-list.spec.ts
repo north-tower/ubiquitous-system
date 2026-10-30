@@ -1,14 +1,29 @@
-import { hmgTopicListMessage } from '../hmg-flow/hmg-interactive';
+import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { buildTelnyxWhatsappInteractiveListBody } from './telnyx-interactive-list';
 
+const sampleList: BaileysListMessageSpec = {
+  kind: 'list',
+  text: 'What are you planning?',
+  title: 'Event type',
+  buttonText: 'Choose event type',
+  sections: [
+    {
+      title: 'Event type',
+      rows: [
+        { title: 'Wedding', rowId: 'wedding' },
+        { title: 'Corporate', rowId: 'corporate' },
+      ],
+    },
+  ],
+};
+
 describe('buildTelnyxWhatsappInteractiveListBody', () => {
-  it('maps HMG topic list to Telnyx interactive list payload', () => {
-    const list = hmgTopicListMessage();
+  it('maps a list spec to a Telnyx interactive list payload', () => {
     expect(
       buildTelnyxWhatsappInteractiveListBody({
         from: '+254786487316',
         to: '+254799229340',
-        list,
+        list: sampleList,
         messagingProfileId: 'profile-uuid',
       }),
     ).toMatchObject({
@@ -20,19 +35,17 @@ describe('buildTelnyxWhatsappInteractiveListBody', () => {
         type: 'interactive',
         interactive: {
           type: 'list',
-          header: { type: 'text', text: 'HMG Group Africa' },
-          body: {
-            text: expect.stringContaining('HMG Group Africa'),
-          },
+          header: { type: 'text', text: 'Event type' },
+          body: { text: 'What are you planning?' },
           action: {
-            button: 'Choose a service',
+            button: 'Choose event type',
             sections: [
               {
-                title: 'Services',
-                rows: expect.arrayContaining([
-                  expect.objectContaining({ id: 'tax_kra' }),
-                  expect.objectContaining({ id: 'something_else' }),
-                ]),
+                title: 'Event type',
+                rows: [
+                  { id: 'wedding', title: 'Wedding' },
+                  { id: 'corporate', title: 'Corporate' },
+                ],
               },
             ],
           },

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
+import type { WhatsappReplyButtons } from './whatsapp-reply-buttons';
 import { BaileysWhatsappClient } from './baileys-whatsapp.client';
 import { MetaWhatsappClient } from './meta-whatsapp.client';
 import { TelnyxWhatsappClient } from './telnyx-whatsapp.client';
@@ -78,6 +79,43 @@ export class WhatsappSendRouter {
     }
     const result = await this.baileys.sendList(to, list, tenantId);
     return { channel: 'baileys', ...result };
+  }
+
+  async sendReplyButtons(
+    to: string,
+    buttons: WhatsappReplyButtons,
+    channel: WhatsappChannel,
+    tenantId?: string,
+    telnyxFrom?: string,
+  ): Promise<WhatsappSendResult> {
+    if (channel === 'baileys') {
+      if (!this.baileys.isConfigured()) {
+        throw new Error('Baileys is not configured.');
+      }
+      const result = await this.baileys.sendButtons(to, buttons, tenantId);
+      return { channel: 'baileys', ...result };
+    }
+    if (channel === 'telnyx') {
+      if (!this.telnyx.isConfigured()) {
+        throw new Error('Telnyx is not configured.');
+      }
+      const result = await this.telnyx.sendInteractiveButtons(
+        to,
+        buttons,
+        telnyxFrom,
+      );
+      return { channel: 'telnyx', ...result };
+    }
+    if (channel === 'meta') {
+      if (!this.meta.isConfigured()) {
+        throw new Error('Meta is not configured.');
+      }
+      const result = await this.meta.sendReplyButtons(to, buttons);
+      return { channel: 'meta', ...result };
+    }
+    throw new Error(
+      `Reply buttons are not sent on channel "${channel}". Numbered text is used instead.`,
+    );
   }
 
   async sendTelnyxList(

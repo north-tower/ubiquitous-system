@@ -26,6 +26,14 @@ export type BaileysInboundMessage = {
         paramsJson?: string | null;
       } | null;
     } | null;
+    buttonsResponseMessage?: {
+      selectedButtonId?: string | null;
+      selectedDisplayText?: string | null;
+    } | null;
+    templateButtonReplyMessage?: {
+      selectedId?: string | null;
+      selectedDisplayText?: string | null;
+    } | null;
     pollUpdateMessage?: {
       pollCreationMessageKey?: {
         id?: string | null;
@@ -103,6 +111,20 @@ function readInboundText(message: NonNullable<BaileysInboundMessage['message']>)
     message.listResponseMessage?.singleSelectReply?.title?.trim() ?? '';
   if (listTitle) {
     return listTitle;
+  }
+  const buttonId =
+    message.buttonsResponseMessage?.selectedButtonId?.trim() ||
+    message.templateButtonReplyMessage?.selectedId?.trim() ||
+    '';
+  if (buttonId) {
+    return buttonId;
+  }
+  const buttonTitle =
+    message.buttonsResponseMessage?.selectedDisplayText?.trim() ||
+    message.templateButtonReplyMessage?.selectedDisplayText?.trim() ||
+    '';
+  if (buttonTitle) {
+    return buttonTitle;
   }
   const nativeFlow = readNativeFlowSelection(
     message.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson,

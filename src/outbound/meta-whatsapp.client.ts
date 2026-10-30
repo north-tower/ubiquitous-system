@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type WhatsappSender } from './whatsapp-channel';
+import {
+  whatsappInteractiveButtonMessage,
+  type WhatsappReplyButtons,
+} from './whatsapp-reply-buttons';
 
 export class MetaSendError extends Error {
   constructor(
@@ -69,6 +73,50 @@ export class MetaWhatsappClient implements WhatsappSender {
     const messageId = readMetaMessageId(raw);
 
     return { messageId, raw };
+  }
+
+  async sendReplyButtons(
+    to: string,
+    buttons: WhatsappReplyButtons,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    const token = this.config.get<string>('META_ACCESS_TOKEN');
+    const phoneNumberId = this.config.get<string>('META_PHONE_NUMBER_ID');
+    if (!token || !phoneNumberId) {
+      throw new Error(
+        'META_ACCESS_TOKEN and META_PHONE_NUMBER_ID are required to send WhatsApp messages',
+      );
+    }
+
+    const version =
+      this.config.get<string>('META_GRAPH_API_VERSION') ?? 'v21.0';
+    const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+    const interactive = whatsappInteractiveButtonMessage(buttons);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        ...interactive,
+      }),
+    });
+
+    let raw: unknown = null;
+    try {
+      raw = JSON.parse(await response.text()) as unknown;
+    } catch {
+      raw = null;
+    }
+    if (!response.ok) {
+      throw new MetaSendError(response.status, JSON.stringify(raw));
+    }
+
+    return { messageId: readMetaMessageId(raw), raw };
   }
 }
 

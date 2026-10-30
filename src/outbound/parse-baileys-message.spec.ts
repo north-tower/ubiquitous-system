@@ -99,6 +99,24 @@ describe('parseBaileysTextMessage', () => {
     });
   });
 
+  it('maps a reply button tap to the button id', () => {
+    expect(
+      parseBaileysTextMessage({
+        key: { remoteJid: '254711111111@s.whatsapp.net', fromMe: false },
+        message: {
+          buttonsResponseMessage: {
+            selectedButtonId: 'tax',
+            selectedDisplayText: 'Tax',
+          },
+        },
+      }),
+    ).toEqual({
+      phoneNumber: '254711111111',
+      text: 'tax',
+      jid: '254711111111@s.whatsapp.net',
+    });
+  });
+
   it('uses participantAlt when the chat id is a lid', () => {
     expect(
       parseBaileysTextMessage({

@@ -21,6 +21,8 @@ import {
 } from '../outbound/baileys-whatsapp.client';
 import { previewBaileysText } from '../outbound/baileys-debug';
 import { OutboundMessageService } from '../outbound/outbound-message.service';
+import type { WhatsappReplyButtons } from '../outbound/whatsapp-reply-buttons';
+import { isHmgRestart } from '../hmg-flow/hmg-restart';
 import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
 import { matchResetCommand } from '../state-machine/match-reset-command';
@@ -231,7 +233,10 @@ export class WhatsappWebhookService implements OnModuleInit {
 
     const trimmed = input.text?.trim() ?? '';
     if (isHumanHandoffState(conversation.currentState)) {
-      if (!matchResetCommand(trimmed)) {
+      const canResume =
+        matchResetCommand(trimmed) ||
+        (input.flow === 'hmg_consultation' && isHmgRestart(trimmed));
+      if (!canResume) {
         return;
       }
       conversation = await this.stateMachine.resumeAutomation(
@@ -245,6 +250,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     let twilioContent: EnquiryTwilioContentKey | undefined;
     let twilioContentVariables: EnquiryReply['twilioContentVariables'];
     let baileysList: EnquiryReply['baileysList'];
+    let replyButtons: WhatsappReplyButtons | undefined;
     let silent = false;
     if (input.flow === 'enquiry_intake') {
       const reply = await this.enquiryFlow.handleInbound(
@@ -267,7 +273,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     } else if (input.flow === 'hmg_consultation') {
       const reply = await this.hmgFlow.handleInbound(conversation, input.text);
       replyText = reply.replyText;
-      baileysList = reply.baileysList;
+      replyButtons = reply.replyButtons;
       silent = Boolean(reply.silent);
     } else {
       const reply = await this.techfindIntake.handleInbound(
@@ -280,7 +286,7 @@ export class WhatsappWebhookService implements OnModuleInit {
 
     if (input.channel === 'baileys') {
       this.logger.log(
-        `Baileys reply plan tenant=${input.tenantId} conversation=${conversation.id} flow=${input.flow} inboundLen=${trimmed.length} silent=${silent} replyLen=${replyText?.length ?? 0} hasList=${Boolean(baileysList)} replyPreview=${previewBaileysText(replyText ?? '')}`,
+        `Baileys reply plan tenant=${input.tenantId} conversation=${conversation.id} flow=${input.flow} inboundLen=${trimmed.length} silent=${silent} replyLen=${replyText?.length ?? 0} hasList=${Boolean(baileysList)} hasButtons=${Boolean(replyButtons)} replyPreview=${previewBaileysText(replyText ?? '')}`,
       );
     }
 
@@ -316,6 +322,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         ...telnyxJobFields,
         ...(twilioContent ? { twilioContent, twilioContentVariables } : {}),
         ...(baileysList ? { baileysList } : {}),
+        ...(replyButtons ? { replyButtons } : {}),
       },
     ];
     await this.outbound.sendAll(outboundJobs);

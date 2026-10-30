@@ -1,53 +1,51 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { Conversation } from '../conversation/conversation.entity';
-import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
-import {
-  matchNumberedOption,
-  type NumberedOption,
-} from '../enquiry-flow/match-numbered-option';
-import { matchHandoverCommand } from '../state-machine/match-handover-command';
-import { matchResetCommand } from '../state-machine/match-reset-command';
-import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
+import type { WhatsappReplyButtons } from '../outbound/whatsapp-reply-buttons';
 import { isHumanHandoffState } from '../state-machine/human-handoff';
+import { ConversationStateMachineService } from '../state-machine/conversation-state-machine.service';
 import * as copy from './hmg-copy';
 import {
-  hmgEntityListMessage,
-  hmgAuditPurposeListMessage,
-  hmgBooksHandlingListMessage,
-  hmgKraStatusListMessage,
-  hmgMeetingListMessage,
-  hmgPayrollSizeListMessage,
-  hmgPutThroughListMessage,
-  hmgTimingListMessage,
-  hmgTopicListMessage,
+  hmgAuditButtons,
+  hmgBooksButtons,
+  hmgMeetingButtons,
+  hmgMenuButtons,
+  hmgTaxButtons,
 } from './hmg-interactive';
 import {
-  HMG_BOOKS_HANDLING_OPTIONS,
-  HMG_AUDIT_PURPOSE_OPTIONS,
-  HMG_ENTITY_OPTIONS,
-  HMG_KRA_STATUS_OPTIONS,
-  HMG_MEETING_OPTIONS,
-  HMG_PAYROLL_SIZE_OPTIONS,
-  HMG_PUT_THROUGH_OPTIONS,
-  HMG_SERVICE_OPTIONS,
-  HMG_TIMING_OPTIONS,
-  hmgServiceNeedsEntityStep,
+  HMG_AUDIT_CHOICES,
+  HMG_BOOKS_CHOICES,
+  HMG_MEETING_CHOICES,
+  HMG_TAX_CHOICES,
+  matchHmgChoice,
+  matchHmgMenu,
+  type HmgChoice,
+  type HmgMenuId,
+  type HmgServiceId,
 } from './hmg-options';
+import type { HmgPayload } from './hmg-payload';
+import { isHmgRestart } from './hmg-restart';
 import { HmgSession } from './hmg-session.entity';
 import { HmgSessionService } from './hmg-session.service';
-import type { HmgPayload } from './hmg-payload';
-import { HMG_STEPS } from './hmg-steps';
-import {
-  formatKenyanPhoneDisplay,
-  parseKenyanPhone,
-} from '../enquiry-flow/parse-kenyan-phone';
+import { HMG_STEPS, type HmgStep } from './hmg-steps';
 
 export type HmgReply = {
   replyText: string;
   silent?: boolean;
-  /** Interactive list (Telnyx, Baileys native list, or Twilio fallback text). */
-  baileysList?: BaileysListMessageSpec;
+  /** Up to 3 WhatsApp reply buttons. The text is the numbered fallback. */
+  replyButtons?: WhatsappReplyButtons;
+};
+
+const MENU_STEP: Record<HmgMenuId, HmgStep> = {
+  tax: HMG_STEPS.AWAITING_TAX,
+  books: HMG_STEPS.AWAITING_BOOKS,
+  audit_other: HMG_STEPS.AWAITING_AUDIT,
+};
+
+const MENU_BUTTONS: Record<HmgMenuId, () => WhatsappReplyButtons> = {
+  tax: hmgTaxButtons,
+  books: hmgBooksButtons,
+  audit_other: hmgAuditButtons,
 };
 
 @Injectable()
@@ -63,7 +61,7 @@ export class HmgFlowService {
   ): Promise<HmgReply> {
     const text = userText?.trim() ?? '';
 
-    if (matchResetCommand(text)) {
+    if (isHmgRestart(text)) {
       if (isHumanHandoffState(conversation.currentState)) {
         const resumed = await this.stateMachine.resumeAutomation(
           conversation.id,
@@ -71,16 +69,7 @@ export class HmgFlowService {
         );
         conversation.currentState = resumed.currentState;
       }
-      await this.sessions.closeOpen(conversation.id);
       return this.openTopicMenu(conversation);
-    }
-
-    if (matchHandoverCommand(text)) {
-      await this.stateMachine.enterHumanHandoff(conversation.id);
-      return {
-        replyText:
-          'Okay — a consultant can continue here on WhatsApp. Type *reset* when you want the menu again.',
-      };
     }
 
     if (isHumanHandoffState(conversation.currentState)) {
@@ -103,11 +92,7 @@ export class HmgFlowService {
   private async openTopicMenu(conversation: Conversation): Promise<HmgReply> {
     await this.sessions.closeOpen(conversation.id);
     await this.sessions.start(conversation.id, HMG_STEPS.AWAITING_TOPIC, {});
-    const list = hmgTopicListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
+    return buttonReply(hmgMenuButtons());
   }
 
   private async continueSession(
@@ -116,487 +101,164 @@ export class HmgFlowService {
     text: string,
   ): Promise<HmgReply> {
     if (session.currentStep === HMG_STEPS.AWAITING_TOPIC) {
-      return this.handleTopicStep(session, text);
+      return this.handleTopic(session, text);
     }
-    if (session.currentStep === HMG_STEPS.AWAITING_ENTITY) {
-      return this.handleEntityStep(session, text);
+    if (session.currentStep === HMG_STEPS.AWAITING_TAX) {
+      return this.handleServiceChoices(session, text, HMG_TAX_CHOICES);
     }
-    if (session.currentStep === HMG_STEPS.AWAITING_BUSINESS_NAME) {
-      return this.handleBusinessNameStep(session, text);
+    if (session.currentStep === HMG_STEPS.AWAITING_BOOKS) {
+      return this.handleServiceChoices(session, text, HMG_BOOKS_CHOICES);
     }
-    if (session.currentStep === HMG_STEPS.AWAITING_PAYROLL_SIZE) {
-      return this.handlePayrollSizeStep(session, text);
+    if (session.currentStep === HMG_STEPS.AWAITING_AUDIT) {
+      return this.handleServiceChoices(session, text, HMG_AUDIT_CHOICES);
     }
-    if (session.currentStep === HMG_STEPS.AWAITING_AUDIT_PURPOSE) {
-      return this.handleAuditPurposeStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_KRA_STATUS) {
-      return this.handleKraStatusStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_BOOKS_HANDLING) {
-      return this.handleBooksHandlingStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_TIMING) {
-      return this.handleTimingStep(session, text);
+    if (session.currentStep === HMG_STEPS.AWAITING_OTHER) {
+      return this.handleOther(conversation, session, text);
     }
     if (session.currentStep === HMG_STEPS.AWAITING_MEETING) {
-      return this.handleMeetingStep(session, text);
+      return this.handleMeeting(session, text);
     }
-    if (session.currentStep === HMG_STEPS.AWAITING_PUT_THROUGH) {
-      return this.handlePutThroughStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_BOOKING_NAME) {
-      return this.handleBookingNameStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_BOOKING_PHONE) {
-      return this.handleBookingPhoneStep(session, text);
-    }
-    if (session.currentStep === HMG_STEPS.AWAITING_BRIEF) {
-      return this.handleBriefStep(session, text);
+    if (session.currentStep === HMG_STEPS.AWAITING_NAME) {
+      return this.handleName(conversation, session, text);
     }
     return this.openTopicMenu(conversation);
   }
 
-  private async handleTopicStep(
+  private async handleTopic(
     session: HmgSession,
     text: string,
   ): Promise<HmgReply> {
-    const matched = matchServiceOption(text);
+    const matched = matchHmgMenu(text);
     if (!matched) {
-      const list = hmgTopicListMessage();
-      return {
-        replyText: copy.hmgTopicReask(),
-        baileysList: {
-          ...list,
-          text: 'Please choose a service from the list below:',
-        },
-      };
+      return buttonReply(hmgMenuButtons());
     }
-
-    const payload: HmgPayload = { serviceId: matched.id };
-    if (hmgServiceNeedsEntityStep(matched.id)) {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_ENTITY,
-        payload,
-      });
-      const list = hmgEntityListMessage();
-      return {
-        replyText: list.text,
-        baileysList: list,
-      };
+    if (matched.type === 'menu') {
+      return this.openSubmenu(session, matched.id);
     }
-
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_BRIEF,
-      payload,
-    });
-    return { replyText: copy.hmgBriefPrompt(matched.id) };
+    return this.acceptService(session, matched.id);
   }
 
-  private async handleEntityStep(
+  private async openSubmenu(
     session: HmgSession,
-    text: string,
+    menuId: HmgMenuId,
   ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_ENTITY_OPTIONS);
-    if (!matched) {
-      const list = hmgEntityListMessage();
-      return {
-        replyText: copy.hmgEntityReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_ENTITY_PROMPT,
-        },
-      };
-    }
-
-    const serviceId = session.payload.serviceId ?? 'tax_kra';
-    const payload: HmgPayload = {
-      ...session.payload,
-      entityId: matched.id,
-    };
     await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_BUSINESS_NAME,
-      payload,
+      step: MENU_STEP[menuId],
+      payload: session.payload,
     });
-    return { replyText: copy.hmgBusinessNamePrompt(matched.id) };
+    return buttonReply(MENU_BUTTONS[menuId]());
   }
 
-  private async handleBusinessNameStep(
+  private async handleServiceChoices(
     session: HmgSession,
     text: string,
+    choices: readonly HmgChoice[],
   ): Promise<HmgReply> {
-    const entityId = session.payload.entityId ?? 'limited_company';
-    if (text.length < 2) {
-      return { replyText: copy.hmgBusinessNameReask(entityId) };
+    const matched = matchHmgChoice(text, choices);
+    if (!matched) {
+      return buttonReply(buttonsForChoices(choices));
     }
+    return this.acceptService(session, matched.id as HmgServiceId);
+  }
 
-    const payload: HmgPayload = {
-      ...session.payload,
-      businessName: text,
-    };
-    const serviceId = session.payload.serviceId ?? 'tax_kra';
-    if (serviceId === 'accounting') {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_BOOKS_HANDLING,
-        payload,
-      });
-      const list = hmgBooksHandlingListMessage();
-      return {
-        replyText: list.text,
-        baileysList: list,
-      };
-    }
-
-    if (serviceId === 'audit') {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_AUDIT_PURPOSE,
-        payload,
-      });
-      const list = hmgAuditPurposeListMessage();
-      return {
-        replyText: list.text,
-        baileysList: list,
-      };
-    }
-
-    if (serviceId === 'payroll') {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_PAYROLL_SIZE,
-        payload,
-      });
-      const list = hmgPayrollSizeListMessage();
-      return {
-        replyText: list.text,
-        baileysList: list,
-      };
-    }
-
+  private async acceptService(
+    session: HmgSession,
+    serviceId: HmgServiceId,
+  ): Promise<HmgReply> {
+    const payload: HmgPayload = { ...session.payload, serviceId };
     if (serviceId === 'something_else') {
       await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_BRIEF,
+        step: HMG_STEPS.AWAITING_OTHER,
         payload,
       });
-      return { replyText: copy.hmgBriefPrompt(serviceId) };
+      return { replyText: copy.HMG_OTHER_PROMPT };
     }
-
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_KRA_STATUS,
-      payload,
-    });
-    const list = hmgKraStatusListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
-  }
-
-  private async handlePayrollSizeStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_PAYROLL_SIZE_OPTIONS);
-    if (!matched) {
-      const list = hmgPayrollSizeListMessage();
-      return {
-        replyText: copy.hmgPayrollSizeReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_PAYROLL_SIZE_PROMPT,
-        },
-      };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      payrollSizeId: matched.id,
-    };
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_TIMING,
-      payload,
-    });
-    const list = hmgTimingListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
-  }
-
-  private async handleAuditPurposeStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_AUDIT_PURPOSE_OPTIONS);
-    if (!matched) {
-      const list = hmgAuditPurposeListMessage();
-      return {
-        replyText: copy.hmgAuditPurposeReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_AUDIT_PURPOSE_PROMPT,
-        },
-      };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      auditPurposeId: matched.id,
-    };
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_TIMING,
-      payload,
-    });
-    const list = hmgTimingListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
-  }
-
-  private async handleBooksHandlingStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_BOOKS_HANDLING_OPTIONS);
-    if (!matched) {
-      const list = hmgBooksHandlingListMessage();
-      return {
-        replyText: copy.hmgBooksHandlingReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_BOOKS_HANDLING_PROMPT,
-        },
-      };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      booksHandlingId: matched.id,
-    };
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_TIMING,
-      payload,
-    });
-    const list = hmgTimingListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
-  }
-
-  private async handleKraStatusStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_KRA_STATUS_OPTIONS);
-    if (!matched) {
-      const list = hmgKraStatusListMessage();
-      return {
-        replyText: copy.hmgKraStatusReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_KRA_STATUS_PROMPT,
-        },
-      };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      kraStatusId: matched.id,
-    };
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_TIMING,
-      payload,
-    });
-    const list = hmgTimingListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
-  }
-
-  private async handleTimingStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_TIMING_OPTIONS);
-    if (!matched) {
-      const list = hmgTimingListMessage();
-      return {
-        replyText: copy.hmgTimingReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_TIMING_PROMPT,
-        },
-      };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      timingId: matched.id,
-    };
     await this.sessions.save(session, {
       step: HMG_STEPS.AWAITING_MEETING,
       payload,
     });
-    const list = hmgMeetingListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
+    return buttonReply(hmgMeetingButtons());
   }
 
-  private async handleMeetingStep(
+  private async handleOther(
+    conversation: Conversation,
     session: HmgSession,
     text: string,
   ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_MEETING_OPTIONS);
-    if (!matched) {
-      const list = hmgMeetingListMessage();
-      return {
-        replyText: copy.hmgMeetingReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_MEETING_PROMPT,
-        },
-      };
+    if (!text) {
+      return { replyText: copy.HMG_OTHER_PROMPT };
     }
+    return this.finish(conversation, session, {
+      ...session.payload,
+      serviceId: 'something_else',
+      brief: text,
+    });
+  }
 
+  private async handleMeeting(
+    session: HmgSession,
+    text: string,
+  ): Promise<HmgReply> {
+    const matched = matchHmgChoice(text, HMG_MEETING_CHOICES);
+    if (!matched) {
+      return buttonReply(hmgMeetingButtons());
+    }
     const payload: HmgPayload = {
       ...session.payload,
       meetingId: matched.id,
     };
     await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_PUT_THROUGH,
+      step: HMG_STEPS.AWAITING_NAME,
       payload,
     });
-    const list = hmgPutThroughListMessage();
-    return {
-      replyText: list.text,
-      baileysList: list,
-    };
+    return { replyText: copy.HMG_NAME_PROMPT };
   }
 
-  private async handlePutThroughStep(
+  private async handleName(
+    conversation: Conversation,
     session: HmgSession,
     text: string,
   ): Promise<HmgReply> {
-    const matched = matchNumberedOption(text, HMG_PUT_THROUGH_OPTIONS);
-    if (!matched) {
-      const list = hmgPutThroughListMessage();
-      return {
-        replyText: copy.hmgPutThroughReask(),
-        baileysList: {
-          ...list,
-          text: copy.HMG_PUT_THROUGH_PROMPT,
-        },
-      };
+    if (!text) {
+      return { replyText: copy.HMG_NAME_PROMPT };
     }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      requestId: matched.id,
-    };
-
-    if (matched.id === 'book_consultation') {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_BOOKING_NAME,
-        payload,
-      });
-      return { replyText: copy.HMG_BOOKING_NAME_PROMPT };
-    }
-
-    return this.finalizeTaxKraSession(session, payload);
-  }
-
-  private async handleBookingNameStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    if (text.length < 2) {
-      return { replyText: copy.hmgBookingNameReask() };
-    }
-
-    const payload: HmgPayload = {
+    return this.finish(conversation, session, {
       ...session.payload,
       contactName: text,
-    };
-    await this.sessions.save(session, {
-      step: HMG_STEPS.AWAITING_BOOKING_PHONE,
-      payload,
     });
-    return { replyText: copy.HMG_BOOKING_PHONE_PROMPT };
   }
 
-  private async handleBookingPhoneStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const normalized = parseKenyanPhone(text);
-    if (!normalized) {
-      return { replyText: copy.hmgBookingPhoneReask() };
-    }
-
-    const payload: HmgPayload = {
-      ...session.payload,
-      contactPhone: formatKenyanPhoneDisplay(normalized).replace(/\s/g, ''),
-    };
-    return this.finalizeTaxKraSession(session, payload);
-  }
-
-  private async finalizeTaxKraSession(
+  private async finish(
+    conversation: Conversation,
     session: HmgSession,
     payload: HmgPayload,
   ): Promise<HmgReply> {
+    const stored: HmgPayload = {
+      ...payload,
+      contactPhone: payload.contactPhone ?? conversation.prospectPhone,
+    };
     const reference = createHmgReference();
     await this.sessions.save(session, {
       step: HMG_STEPS.SUBMITTED,
-      payload,
+      payload: stored,
     });
     await this.sessions.markSubmitted(session, reference);
-    return {
-      replyText: copy.hmgTaxKraSubmitted(reference, payload),
-    };
+    return { replyText: copy.hmgCompleted(stored) };
   }
-
-  private async handleBriefStep(
-    session: HmgSession,
-    text: string,
-  ): Promise<HmgReply> {
-    const serviceId = session.payload.serviceId ?? 'something_else';
-    const minLength = serviceId === 'something_else' ? 2 : 4;
-    if (text.length < minLength) {
-      return { replyText: copy.hmgBriefReask(serviceId) };
-    }
-
-    const payload: HmgPayload = { ...session.payload, brief: text };
-
-    if (serviceId === 'something_else') {
-      await this.sessions.save(session, {
-        step: HMG_STEPS.AWAITING_TIMING,
-        payload,
-      });
-      const list = hmgTimingListMessage();
-      return {
-        replyText: list.text,
-        baileysList: list,
-      };
-    }
-
-    const reference = createHmgReference();
-    await this.sessions.save(session, {
-      step: HMG_STEPS.SUBMITTED,
-      payload,
-    });
-    await this.sessions.markSubmitted(session, reference);
-    return {
-      replyText: copy.hmgSubmitted(reference, serviceId, text),
-    };
-  }
-
 }
 
-function matchServiceOption(text: string): NumberedOption | null {
-  return matchNumberedOption(text, HMG_SERVICE_OPTIONS);
+function buttonReply(buttons: WhatsappReplyButtons): HmgReply {
+  return { replyText: buttons.text, replyButtons: buttons };
+}
+
+function buttonsForChoices(choices: readonly HmgChoice[]): WhatsappReplyButtons {
+  if (choices === HMG_TAX_CHOICES) {
+    return hmgTaxButtons();
+  }
+  if (choices === HMG_BOOKS_CHOICES) {
+    return hmgBooksButtons();
+  }
+  return hmgAuditButtons();
 }
 
 function createHmgReference(): string {

@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
 import { toDigits, type WhatsappSender } from './whatsapp-channel';
 import { buildTelnyxWhatsappInteractiveListBody } from './telnyx-interactive-list';
+import {
+  buildTelnyxWhatsappInteractiveButtonBody,
+  type WhatsappReplyButtons,
+} from './whatsapp-reply-buttons';
 
 export class TelnyxSendError extends Error {
   constructor(
@@ -195,6 +199,37 @@ export class TelnyxWhatsappClient implements WhatsappSender {
       messagingProfileId,
     });
 
+    return this.postWhatsappMessage(apiKey, from, messagingProfileId, requestBody);
+  }
+
+  async sendInteractiveButtons(
+    to: string,
+    buttons: WhatsappReplyButtons,
+    fromOverride?: string,
+  ): Promise<{ messageId: string | null; raw: unknown }> {
+    const apiKey = this.config.get<string>('TELNYX_API_KEY');
+    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
+    const fromRaw = fromOverride?.trim() || configuredFrom;
+    if (!apiKey || !fromRaw) {
+      throw new Error(
+        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
+      );
+    }
+
+    const from = toE164(fromRaw);
+    const toAddress = toE164(to);
+    const messagingProfileId = await resolveMessagingProfileId(
+      apiKey,
+      from,
+      this.config.get<string>('TELNYX_MESSAGING_PROFILE_ID'),
+      this.messagingProfileCache,
+    );
+    const requestBody = buildTelnyxWhatsappInteractiveButtonBody({
+      from,
+      to: toAddress,
+      buttons,
+      messagingProfileId,
+    });
     return this.postWhatsappMessage(apiKey, from, messagingProfileId, requestBody);
   }
 

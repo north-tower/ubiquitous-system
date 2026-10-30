@@ -27,6 +27,7 @@ import {
 } from './twilio-whatsapp.client';
 import { type WhatsappChannel } from './whatsapp-channel';
 import { WhatsappSendRouter } from './whatsapp-send.router';
+import type { WhatsappReplyButtons } from './whatsapp-reply-buttons';
 
 export type OutboundTextJob = {
   conversationId: string;
@@ -41,6 +42,8 @@ export type OutboundTextJob = {
   twilioContent?: EnquiryTwilioContentKey;
   twilioContentVariables?: Record<string, string>;
   baileysList?: BaileysListMessageSpec;
+  /** WhatsApp reply buttons (max 3). Text remains the numbered fallback. */
+  replyButtons?: WhatsappReplyButtons;
 };
 
 @Injectable()
@@ -72,6 +75,9 @@ export class OutboundMessageService {
       this.logger.warn(
         `Skipped WhatsApp send (test/skip) conversation=${job.conversationId} channel=${job.channel ?? 'auto'}`,
       );
+      return;
+    }
+    if (await this.trySendReplyButtons(job)) {
       return;
     }
     if (await this.trySendBaileysList(job)) {
@@ -248,6 +254,55 @@ export class OutboundMessageService {
 
   private baileysEnquiryInteractiveEnabled(): boolean {
     return this.config.get<string>('BAILEYS_ENQUIRY_INTERACTIVE') !== 'false';
+  }
+
+  private async trySendReplyButtons(job: OutboundTextJob): Promise<boolean> {
+    if (!job.replyButtons || job.replyButtons.buttons.length === 0) {
+      return false;
+    }
+    const channel = job.channel;
+    if (channel !== 'baileys' && channel !== 'telnyx' && channel !== 'meta') {
+      return false;
+    }
+    if (channel === 'baileys' && !this.baileysEnquiryInteractiveEnabled()) {
+      this.logger.warn(
+        `Reply buttons skipped (BAILEYS_ENQUIRY_INTERACTIVE=false) conversation=${job.conversationId}`,
+      );
+      return false;
+    }
+    this.logger.log(
+      `Reply buttons attempt conversation=${job.conversationId} to=${job.to} channel=${channel} count=${job.replyButtons.buttons.length}`,
+    );
+    try {
+      const sent = await this.router.sendReplyButtons(
+        job.to,
+        job.replyButtons,
+        channel,
+        job.tenantId,
+        job.telnyxFrom,
+      );
+      await this.conversations.recordOutbound({
+        conversationId: job.conversationId,
+        text: job.text,
+        rawPayload: {
+          channel: sent.channel,
+          messageId: sent.messageId,
+          replyButtons: job.replyButtons,
+          response: sent.raw,
+        },
+      });
+      this.logger.log(
+        `Sent reply buttons conversation=${job.conversationId} to=${job.to} channel=${sent.channel}`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Reply buttons send failed, falling back to text conversation=${job.conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
   }
 
   private async trySendBaileysList(job: OutboundTextJob): Promise<boolean> {
