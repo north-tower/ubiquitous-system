@@ -188,8 +188,11 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
+    // WhatsApp Desk tenant number wins over webhook `to` (avoids wrong from on fallback routing).
     const telnyxFrom =
-      parsed.businessPhoneNumber ?? tenant.telnyxWhatsappFrom ?? undefined;
+      tenant.telnyxWhatsappFrom?.trim() ||
+      parsed.businessPhoneNumber?.trim() ||
+      undefined;
     if (!telnyxFrom) {
       this.logger.error(
         `Telnyx inbound tenant=${tenant.id} (${tenant.name}) has no WhatsApp number — assign telnyxWhatsappFrom in WhatsApp Desk`,
