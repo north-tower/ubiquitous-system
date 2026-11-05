@@ -122,6 +122,55 @@ describe('TenantService.createStaffTenant', () => {
   });
 });
 
+describe('TenantService.ensureTelnyxTechfindDemoTenant', () => {
+  const tenants = {
+    findOne: jest.fn(),
+    create: jest.fn((row: Partial<Tenant>) => row),
+    save: jest.fn(async (row: Partial<Tenant>) => ({ ...row, id: 'demo-id' })),
+  };
+  const config = { get: jest.fn() };
+  const service = new TenantService(
+    tenants as unknown as Repository<Tenant>,
+    config as unknown as ConfigService,
+  );
+
+  beforeEach(() => {
+    tenants.findOne.mockReset();
+    tenants.create.mockClear();
+    tenants.save.mockClear();
+    config.get.mockImplementation((key: string) => {
+      if (key === 'TELNYX_API_KEY') {
+        return 'test-key';
+      }
+      if (key === 'TELNYX_WHATSAPP_FROM') {
+        return '+254786487316';
+      }
+      return undefined;
+    });
+  });
+
+  it('updates an existing tenant that already owns TELNYX_WHATSAPP_FROM', async () => {
+    const existing = {
+      id: 'staff-telnyx',
+      whatsappPhoneNumberId: 'telnyx:other',
+      primaryChannel: 'telnyx',
+      telnyxWhatsappFrom: '+254786487316',
+      connectToken: 'keep-me',
+    } as Tenant;
+    tenants.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existing);
+
+    const saved = await service.ensureTelnyxTechfindDemoTenant();
+
+    expect(saved?.whatsappPhoneNumberId).toBe('telnyx:techfind');
+    expect(saved?.flow).toBe('techfind_demo');
+    expect(saved?.connectToken).toBe('keep-me');
+    expect(tenants.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('TenantService.ensureConnectTokens', () => {
   const tenants = {
     find: jest.fn(),

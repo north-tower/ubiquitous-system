@@ -317,6 +317,9 @@ export class TenantService implements OnModuleInit {
         },
       });
     }
+    if (!existing) {
+      existing = await this.findByTelnyxWhatsappFrom(telnyxWhatsappFrom);
+    }
 
     if (existing) {
       existing.name = 'Techfind Consulting (Telnyx)';
