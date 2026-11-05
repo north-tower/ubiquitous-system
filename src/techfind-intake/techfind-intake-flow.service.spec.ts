@@ -131,9 +131,10 @@ describe('TechfindIntakeFlowService', () => {
       {},
     );
     expect(reply.replyText).toMatch(/Techfind Consulting/);
-    expect(reply.replyButtons?.buttons).toHaveLength(3);
-    expect(reply.replyButtons?.fallbackText).toMatch(/Website/);
-    expect(reply.replyButtons?.fallbackText).toMatch(/Reply with a number \(1–7\)/);
+    expect(reply.replyText).toMatch(/Website/);
+    expect(reply.replyText).toMatch(/Explore PLAAGG/);
+    expect(reply.replyText).toMatch(/reply with a number or the option name/i);
+    expect(reply.replyButtons).toBeUndefined();
     expect(reply.baileysList).toBeUndefined();
   });
 

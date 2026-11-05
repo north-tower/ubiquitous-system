@@ -1,32 +1,21 @@
 import { formatNumberedOptions } from '../enquiry-flow/match-numbered-option';
 import { TECHFIND_MENU_OPTIONS } from './techfind-menu-options';
 
-export const TECHFIND_MENU_INTRO = [
+export const TECHFIND_REPLY_WITH_NUMBER =
+  'Reply with a number or the option name.';
+
+export const TECHFIND_INTAKE_GREETING = [
   'Hi — this is *Techfind Consulting* on WhatsApp.',
   '',
-  'How can we help you today?',
-].join('\n');
-
-export const TECHFIND_REPLY_WITH_NUMBER = 'Reply with a number (1–7).';
-
-export const TECHFIND_MENU_FALLBACK = [
-  TECHFIND_MENU_INTRO,
+  'How can we help you today? Reply with a number or the option name.',
   '',
   formatNumberedOptions(TECHFIND_MENU_OPTIONS),
   '',
-  TECHFIND_REPLY_WITH_NUMBER,
-  '',
-  'Type *reset* anytime to start over.',
+  'Type reset anytime to start over.',
 ].join('\n');
 
-/** @deprecated Plain-text-only greeting; prefer reply buttons with TECHFIND_MENU_INTRO. */
-export const TECHFIND_INTAKE_GREETING = TECHFIND_MENU_FALLBACK;
-
-export const REASK_MENU_INTRO =
-  "I didn't catch that — pick an option below or reply with a number (1–7).";
-
 export const REASK_MENU = [
-  REASK_MENU_INTRO,
+  "I didn't catch that — reply with a number or the option name.",
   '',
   formatNumberedOptions(TECHFIND_MENU_OPTIONS),
 ].join('\n');

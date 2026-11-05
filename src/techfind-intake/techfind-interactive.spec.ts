@@ -1,9 +1,7 @@
 import {
   techfindPlaaggFinishButtons,
   techfindPlaaggFinishList,
-  techfindTopMenuButtons,
 } from './techfind-interactive';
-import { WHATSAPP_REPLY_BUTTON_TITLE_MAX } from '../outbound/whatsapp-reply-buttons';
 
 describe('techfind interactive outbound', () => {
   it('builds a PLAAGG finish list with four row ids', () => {
@@ -25,14 +23,4 @@ describe('techfind interactive outbound', () => {
     expect(buttons.fallbackText).toMatch(/recommended PLAAGG plan/i);
   });
 
-  it('opens with three top-level menu reply buttons', () => {
-    const menu = techfindTopMenuButtons();
-    expect(menu.buttons).toHaveLength(3);
-    for (const button of menu.buttons) {
-      expect(button.title.length).toBeLessThanOrEqual(
-        WHATSAPP_REPLY_BUTTON_TITLE_MAX,
-      );
-    }
-    expect(menu.fallbackText).toMatch(/Reply with a number \(1–7\)/);
-  });
 });

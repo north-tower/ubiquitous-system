@@ -37,17 +37,7 @@ import {
   techfindPlaaggFinishButtons,
   techfindPlaaggIndustryButtons,
   techfindPlaaggIndustryList,
-  techfindReaskMenuButtons,
-  techfindSupportStackButtons,
-  techfindTopMenuButtons,
-  techfindWebStackButtons,
 } from './techfind-interactive';
-import {
-  matchTechfindChoice,
-  matchTechfindTopMenu,
-  TECHFIND_SUPPORT_STACK_CHOICES,
-  TECHFIND_WEB_STACK_CHOICES,
-} from './techfind-menu-choices';
 
 export type TechfindIntakeReply = {
   replyText: string;
@@ -124,7 +114,7 @@ export class TechfindIntakeFlowService {
       TECHFIND_INTAKE_STEPS.AWAITING_MENU,
       {},
     );
-    return buttonReply(techfindTopMenuButtons());
+    return { replyText: copy.TECHFIND_INTAKE_GREETING };
   }
 
   private async ensureGreetingState(conversation: Conversation): Promise<void> {
@@ -144,10 +134,6 @@ export class TechfindIntakeFlowService {
     switch (session.currentStep) {
       case TECHFIND_INTAKE_STEPS.AWAITING_MENU:
         return this.captureMenu(session, text);
-      case TECHFIND_INTAKE_STEPS.AWAITING_MENU_WEB:
-        return this.captureMenuWeb(session, text);
-      case TECHFIND_INTAKE_STEPS.AWAITING_MENU_SUPPORT:
-        return this.captureMenuSupport(session, text);
       case TECHFIND_INTAKE_STEPS.AWAITING_NAME:
         return this.captureName(session, text);
       case TECHFIND_INTAKE_STEPS.AWAITING_BUSINESS:
@@ -163,7 +149,7 @@ export class TechfindIntakeFlowService {
       case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_FINISH:
         return this.capturePlaaggFinish(conversation, session, text);
       default:
-        return buttonReply(techfindTopMenuButtons());
+        return { replyText: copy.TECHFIND_INTAKE_GREETING };
     }
   }
 
@@ -172,64 +158,10 @@ export class TechfindIntakeFlowService {
     text: string,
   ): Promise<TechfindIntakeReply> {
     const matched = matchNumberedOption(text, MENU_OPTIONS);
-    if (matched) {
-      return this.selectService(session, matched.id as TechfindMenuOptionId);
-    }
-
-    const top = matchTechfindTopMenu(text);
-    if (top?.type === 'service') {
-      return this.selectService(session, top.id);
-    }
-    if (top?.type === 'branch' && top.id === 'techfind_menu_web') {
-      return this.openWebStackMenu(session);
-    }
-    if (top?.type === 'branch' && top.id === 'techfind_menu_support') {
-      return this.openSupportStackMenu(session);
-    }
-
-    return buttonReply(techfindReaskMenuButtons());
-  }
-
-  private async captureMenuWeb(
-    session: TechfindIntakeSession,
-    text: string,
-  ): Promise<TechfindIntakeReply> {
-    const matched = matchTechfindChoice(text, TECHFIND_WEB_STACK_CHOICES);
     if (!matched) {
-      return buttonReply(techfindWebStackButtons());
+      return { replyText: copy.REASK_MENU };
     }
     return this.selectService(session, matched.id as TechfindMenuOptionId);
-  }
-
-  private async captureMenuSupport(
-    session: TechfindIntakeSession,
-    text: string,
-  ): Promise<TechfindIntakeReply> {
-    const matched = matchTechfindChoice(text, TECHFIND_SUPPORT_STACK_CHOICES);
-    if (!matched) {
-      return buttonReply(techfindSupportStackButtons());
-    }
-    return this.selectService(session, matched.id as TechfindMenuOptionId);
-  }
-
-  private async openWebStackMenu(
-    session: TechfindIntakeSession,
-  ): Promise<TechfindIntakeReply> {
-    await this.sessions.save(session, {
-      step: TECHFIND_INTAKE_STEPS.AWAITING_MENU_WEB,
-      payload: session.payload,
-    });
-    return buttonReply(techfindWebStackButtons());
-  }
-
-  private async openSupportStackMenu(
-    session: TechfindIntakeSession,
-  ): Promise<TechfindIntakeReply> {
-    await this.sessions.save(session, {
-      step: TECHFIND_INTAKE_STEPS.AWAITING_MENU_SUPPORT,
-      payload: session.payload,
-    });
-    return buttonReply(techfindSupportStackButtons());
   }
 
   private async selectService(
@@ -713,8 +645,4 @@ export class TechfindIntakeFlowService {
     await this.stateMachine.enterHumanHandoff(conversation.id);
     return { replyText: copy.HUMAN_HANDOVER_ACK };
   }
-}
-
-function buttonReply(buttons: WhatsappReplyButtons): TechfindIntakeReply {
-  return { replyText: buttons.text, replyButtons: buttons };
 }

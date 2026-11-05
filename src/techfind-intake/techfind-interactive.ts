@@ -9,13 +9,6 @@ import {
 import type { WhatsappReplyButtons } from '../outbound/whatsapp-reply-buttons';
 import { PLAAGG_FINISH_OPTIONS } from './plaagg-finish-options';
 import * as copy from './techfind-intake-copy';
-import {
-  TECHFIND_SUPPORT_STACK_CHOICES,
-  TECHFIND_TOP_MENU_CHOICES,
-  TECHFIND_WEB_STACK_CHOICES,
-  type TechfindChoice,
-} from './techfind-menu-choices';
-import { TECHFIND_MENU_OPTIONS } from './techfind-menu-options';
 
 function optionsListMessage(input: {
   replyText: string;
@@ -65,31 +58,6 @@ export function techfindPlaaggFinishList(replyText: string): BaileysListMessageS
   });
 }
 
-function choiceButtons(
-  intro: string,
-  choices: readonly TechfindChoice[],
-  fallbackExtra?: string,
-): WhatsappReplyButtons {
-  const numbered = choices
-    .map((choice) => `${choice.numbers[0] ?? ''}  ${choice.label}`.trim())
-    .join('\n');
-  return {
-    text: intro,
-    buttons: choices.map((choice) => ({
-      id: choice.id,
-      title: choice.title,
-    })),
-    fallbackText: [
-      intro,
-      ...(fallbackExtra ? ['', fallbackExtra] : []),
-      '',
-      numbered,
-      '',
-      copy.TECHFIND_REPLY_WITH_NUMBER,
-    ].join('\n'),
-  };
-}
-
 function optionButtons(input: {
   intro: string;
   options: readonly NumberedOption[];
@@ -111,36 +79,6 @@ function optionButtons(input: {
       copy.TECHFIND_REPLY_WITH_NUMBER,
     ].join('\n'),
   };
-}
-
-export function techfindTopMenuButtons(): WhatsappReplyButtons {
-  return {
-    text: copy.TECHFIND_MENU_INTRO,
-    buttons: TECHFIND_TOP_MENU_CHOICES.map((choice) => ({
-      id: choice.id,
-      title: choice.title,
-    })),
-    fallbackText: copy.TECHFIND_MENU_FALLBACK,
-  };
-}
-
-export function techfindReaskMenuButtons(): WhatsappReplyButtons {
-  return {
-    text: copy.REASK_MENU_INTRO,
-    buttons: TECHFIND_TOP_MENU_CHOICES.map((choice) => ({
-      id: choice.id,
-      title: choice.title,
-    })),
-    fallbackText: copy.REASK_MENU,
-  };
-}
-
-export function techfindWebStackButtons(): WhatsappReplyButtons {
-  return choiceButtons('Which service?', TECHFIND_WEB_STACK_CHOICES);
-}
-
-export function techfindSupportStackButtons(): WhatsappReplyButtons {
-  return choiceButtons('Which one?', TECHFIND_SUPPORT_STACK_CHOICES);
 }
 
 const PLAAGG_FINISH_BUTTON_IDS = [
