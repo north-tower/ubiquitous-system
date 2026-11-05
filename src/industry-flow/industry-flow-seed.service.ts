@@ -13,22 +13,21 @@ export class IndustryFlowSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const tenant = await this.tenants.findDefault();
-    if (!tenant) {
-      return;
+    const demoTenants = await this.tenants.list();
+    for (const tenant of demoTenants) {
+      if (tenant.flow !== 'techfind_demo') {
+        continue;
+      }
+      const existing = await this.flows.listForTenant(tenant.id);
+      if (existing.length > 0) {
+        continue;
+      }
+      for (const defaults of DEFAULT_INDUSTRY_FLOWS) {
+        await this.flows.upsertByDemoMode(tenant.id, defaults);
+      }
+      this.logger.log(
+        `Seeded ${DEFAULT_INDUSTRY_FLOWS.length} PLAAGG industry flows for tenant ${tenant.id}`,
+      );
     }
-    if (tenant.flow !== 'techfind_demo') {
-      return;
-    }
-    const existing = await this.flows.listForTenant(tenant.id);
-    if (existing.length > 0) {
-      return;
-    }
-    for (const defaults of DEFAULT_INDUSTRY_FLOWS) {
-      await this.flows.upsertByDemoMode(tenant.id, defaults);
-    }
-    this.logger.log(
-      `Seeded ${DEFAULT_INDUSTRY_FLOWS.length} PLAAGG industry flows for tenant ${tenant.id}`,
-    );
   }
 }

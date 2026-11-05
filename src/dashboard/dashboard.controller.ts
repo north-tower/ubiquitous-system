@@ -48,6 +48,7 @@ export class DashboardController {
       name?: unknown;
       flow?: unknown;
       primaryChannel?: unknown;
+      telnyxWhatsappFrom?: unknown;
       email?: unknown;
       firstName?: unknown;
       lastName?: unknown;

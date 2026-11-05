@@ -128,10 +128,7 @@ export class TelnyxWhatsappClient implements WhatsappSender {
   constructor(private readonly config: ConfigService) {}
 
   isConfigured(): boolean {
-    return Boolean(
-      this.config.get<string>('TELNYX_API_KEY') &&
-        this.config.get<string>('TELNYX_WHATSAPP_FROM'),
-    );
+    return Boolean(this.config.get<string>('TELNYX_API_KEY'));
   }
 
   async sendText(

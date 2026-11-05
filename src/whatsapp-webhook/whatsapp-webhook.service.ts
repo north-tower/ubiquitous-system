@@ -180,7 +180,9 @@ export class WhatsappWebhookService implements OnModuleInit {
       `Telnyx inbound from=${parsed.phoneNumber} textLen=${parsed.text?.length ?? 0} messageId=${parsed.messageId ?? 'none'}`,
     );
 
-    const tenant = await this.tenantResolver.resolveForTelnyxInbound();
+    const tenant = await this.tenantResolver.resolveForTelnyxInbound(
+      parsed.businessPhoneNumber,
+    );
     if (!tenant) {
       this.logger.warn('No tenant for Telnyx inbound');
       return;
@@ -194,7 +196,8 @@ export class WhatsappWebhookService implements OnModuleInit {
         text: parsed.text,
         raw: parsed.raw,
         channel: 'telnyx',
-        telnyxFrom: parsed.businessPhoneNumber ?? undefined,
+        telnyxFrom:
+          parsed.businessPhoneNumber ?? tenant.telnyxWhatsappFrom ?? undefined,
       });
     } catch (error) {
       this.logInboundProcessingFailed('Telnyx', error);
@@ -281,6 +284,8 @@ export class WhatsappWebhookService implements OnModuleInit {
         input.text,
       );
       replyText = reply.replyText;
+      baileysList = reply.baileysList;
+      replyButtons = reply.replyButtons;
       silent = Boolean(reply.silent);
     }
 
@@ -299,10 +304,12 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
+    let telnyxFrom = input.telnyxFrom;
+    if (input.channel === 'telnyx' && !telnyxFrom) {
+      telnyxFrom = await this.resolveTenantTelnyxFrom(input.tenantId);
+    }
     const telnyxJobFields =
-      input.channel === 'telnyx' && input.telnyxFrom
-        ? { telnyxFrom: input.telnyxFrom }
-        : {};
+      input.channel === 'telnyx' && telnyxFrom ? { telnyxFrom } : {};
 
     const outboundJobs = [
       ...(prefaceTexts ?? []).map((text) => ({
@@ -326,5 +333,12 @@ export class WhatsappWebhookService implements OnModuleInit {
       },
     ];
     await this.outbound.sendAll(outboundJobs);
+  }
+
+  private async resolveTenantTelnyxFrom(
+    tenantId: string,
+  ): Promise<string | undefined> {
+    const tenant = await this.tenantResolver.resolveById(tenantId);
+    return tenant?.telnyxWhatsappFrom ?? undefined;
   }
 }

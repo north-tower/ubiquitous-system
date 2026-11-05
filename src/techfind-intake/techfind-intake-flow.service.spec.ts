@@ -130,8 +130,11 @@ describe('TechfindIntakeFlowService', () => {
       TECHFIND_INTAKE_STEPS.AWAITING_MENU,
       {},
     );
-    expect(reply.replyText).toMatch(/Website/);
-    expect(reply.replyText).toMatch(/Explore PLAAGG/);
+    expect(reply.replyText).toMatch(/Techfind Consulting/);
+    expect(reply.replyButtons?.buttons).toHaveLength(3);
+    expect(reply.replyButtons?.fallbackText).toMatch(/Website/);
+    expect(reply.replyButtons?.fallbackText).toMatch(/Reply with a number \(1–7\)/);
+    expect(reply.baileysList).toBeUndefined();
   });
 
   it('sends the website URL after intake for option 1', async () => {
@@ -208,8 +211,10 @@ describe('TechfindIntakeFlowService', () => {
       }),
     );
     expect(sessions.markComplete).not.toHaveBeenCalled();
-    expect(reply.replyText).toMatch(/Solar/);
     expect(reply.replyText).toMatch(/logged your details/i);
+    expect(reply.replyButtons?.buttons).toHaveLength(1);
+    expect(reply.replyButtons?.buttons[0].id).toBe('solar');
+    expect(reply.baileysList).toBeUndefined();
   });
 
   it('shows PLAAGG business insight after a demo completes', async () => {
@@ -278,6 +283,11 @@ describe('TechfindIntakeFlowService', () => {
     );
 
     expect(reply.replyText).toMatch(/Pipeline stage/i);
-    expect(reply.replyText).toMatch(/Book a personalized demo/i);
+    expect(reply.replyButtons?.buttons).toHaveLength(3);
+    expect(reply.replyButtons?.buttons.map((row) => row.id)).toEqual([
+      'book_demo',
+      'speak_to_techfind',
+      'try_another',
+    ]);
   });
 });

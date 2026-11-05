@@ -28,15 +28,21 @@ export class DashboardTenantService {
     firstName?: unknown;
     lastName?: unknown;
     appUrl?: unknown;
+    telnyxWhatsappFrom?: unknown;
   }): Promise<CreateTenantResult> {
     const name = typeof body.name === 'string' ? body.name : '';
     const flow = typeof body.flow === 'string' ? body.flow : '';
     const primaryChannel =
       typeof body.primaryChannel === 'string' ? body.primaryChannel : '';
+    const telnyxWhatsappFrom =
+      typeof body.telnyxWhatsappFrom === 'string'
+        ? body.telnyxWhatsappFrom
+        : undefined;
     const tenant = await this.tenants.createStaffTenant({
       name,
       flow,
       primaryChannel,
+      telnyxWhatsappFrom,
     });
 
     const email = typeof body.email === 'string' ? body.email : '';
@@ -120,6 +126,7 @@ export class DashboardTenantService {
         name: tenant.name,
         flow: tenant.flow,
         primaryChannel: tenant.primaryChannel,
+        telnyxWhatsappFrom: tenant.telnyxWhatsappFrom,
         linkedPhone: tenant.linkedPhone,
         status: this.baileys.connectionStatus(tenant.id),
         connectToken: tenant.connectToken,

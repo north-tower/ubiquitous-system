@@ -21,9 +21,12 @@ import {
   TENANT_FLOWS,
   type TenantFlow,
 } from './tenant-flow';
+import { normalizeTelnyxWhatsappFrom } from './normalize-telnyx-whatsapp-from';
 
 const TWILIO_PHONE_NUMBER_PLACEHOLDER = 'twilio';
 const TELNYX_PHONE_NUMBER_PLACEHOLDER = 'telnyx';
+/** Dedicated Techfind demo tenant on Telnyx (not the default seeded row). */
+export const TELNYX_TECHFIND_DEMO_PHONE_ID = 'telnyx:techfind';
 const BAILEYS_PHONE_NUMBER_PLACEHOLDER = 'baileys';
 
 @Injectable()
@@ -38,6 +41,7 @@ export class TenantService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.ensureTechfindTenant();
+    await this.ensureTelnyxTechfindDemoTenant();
     await this.ensureConnectTokens();
   }
 
@@ -73,6 +77,18 @@ export class TenantService implements OnModuleInit {
       take: 1,
     });
     return tenant ?? null;
+  }
+
+  async findByTelnyxWhatsappFrom(raw: string): Promise<Tenant | null> {
+    let normalized: string;
+    try {
+      normalized = normalizeTelnyxWhatsappFrom(raw);
+    } catch {
+      return null;
+    }
+    return this.tenants.findOne({
+      where: { telnyxWhatsappFrom: normalized },
+    });
   }
 
   async findById(id: string): Promise<Tenant | null> {
@@ -111,6 +127,7 @@ export class TenantService implements OnModuleInit {
     name: string;
     flow: string;
     primaryChannel: string;
+    telnyxWhatsappFrom?: string;
   }): Promise<Tenant> {
     const name = input.name.trim();
     if (!name) {
@@ -131,17 +148,54 @@ export class TenantService implements OnModuleInit {
     }
     this.assertPrimaryChannelReady(input.primaryChannel);
 
+    let telnyxWhatsappFrom: string | null = null;
+    let whatsappPhoneNumberId = `baileys:${randomUUID()}`;
+    if (input.primaryChannel === 'telnyx') {
+      telnyxWhatsappFrom = this.parseTelnyxWhatsappFromInput(
+        input.telnyxWhatsappFrom,
+      );
+      await this.assertTelnyxNumberAvailable(telnyxWhatsappFrom);
+      whatsappPhoneNumberId = `telnyx:${randomUUID()}`;
+    }
+
     return this.tenants.save(
       this.tenants.create({
         name,
         flow: input.flow,
         primaryChannel: input.primaryChannel,
-        whatsappPhoneNumberId: `baileys:${randomUUID()}`,
+        whatsappPhoneNumberId,
         whatsappBusinessAccountId: null,
         linkedPhone: null,
+        telnyxWhatsappFrom,
         connectToken: newConnectToken(),
       }),
     );
+  }
+
+  private async assertTelnyxNumberAvailable(from: string): Promise<void> {
+    const taken = await this.findByTelnyxWhatsappFrom(from);
+    if (taken) {
+      throw new BadRequestException(
+        'That Telnyx WhatsApp number is already assigned to another tenant',
+      );
+    }
+  }
+
+  private parseTelnyxWhatsappFromInput(raw: string | undefined): string {
+    const fallback = this.config.get<string>('TELNYX_WHATSAPP_FROM')?.trim();
+    const source = raw?.trim() || fallback;
+    if (!source) {
+      throw new BadRequestException(
+        'telnyxWhatsappFrom is required when primaryChannel is telnyx',
+      );
+    }
+    try {
+      return normalizeTelnyxWhatsappFrom(source);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid Telnyx WhatsApp number',
+      );
+    }
   }
 
   private assertPrimaryChannelReady(channel: TenantPrimaryChannel): void {
@@ -159,13 +213,9 @@ export class TenantService implements OnModuleInit {
       return;
     }
     if (channel === 'telnyx') {
-      const ready = Boolean(
-        this.config.get<string>('TELNYX_API_KEY') &&
-          this.config.get<string>('TELNYX_WHATSAPP_FROM'),
-      );
-      if (!ready) {
+      if (!this.config.get<string>('TELNYX_API_KEY')) {
         throw new BadRequestException(
-          'Telnyx WhatsApp is not configured on this server',
+          'Telnyx WhatsApp is not configured on this server (TELNYX_API_KEY)',
         );
       }
       return;
@@ -197,19 +247,14 @@ export class TenantService implements OnModuleInit {
       this.config.get<string>('TWILIO_AUTH_TOKEN') &&
       this.config.get<string>('TWILIO_WHATSAPP_FROM'),
     );
-    const telnyxReady = Boolean(
-      this.config.get<string>('TELNYX_API_KEY') &&
-        this.config.get<string>('TELNYX_WHATSAPP_FROM'),
-    );
     const baileysReady = this.config.get<string>('BAILEYS_ENABLED') === 'true';
     const whatsappPhoneNumberId =
       metaPhoneNumberId ||
       (twilioReady ? TWILIO_PHONE_NUMBER_PLACEHOLDER : null) ||
-      (telnyxReady ? TELNYX_PHONE_NUMBER_PLACEHOLDER : null) ||
       (baileysReady ? BAILEYS_PHONE_NUMBER_PLACEHOLDER : null);
     if (!whatsappPhoneNumberId) {
       this.logger.warn(
-        'Neither META_PHONE_NUMBER_ID, Twilio/Telnyx credentials, nor BAILEYS_ENABLED are set; Techfind tenant will not be seeded',
+        'Neither META_PHONE_NUMBER_ID, Twilio credentials, nor BAILEYS_ENABLED are set; Techfind tenant will not be seeded',
       );
       return null;
     }
@@ -240,6 +285,63 @@ export class TenantService implements OnModuleInit {
       }),
     );
     this.logger.log(`Seeded Techfind tenant id=${saved.id}`);
+    return saved;
+  }
+
+  /**
+   * Second tenant for Telnyx WABA: techfind_demo on primary_channel=telnyx.
+   * Inbound Telnyx webhooks resolve here before the default Baileys/Meta row.
+   */
+  async ensureTelnyxTechfindDemoTenant(): Promise<Tenant | null> {
+    const apiKey = this.config.get<string>('TELNYX_API_KEY');
+    const fromEnv = this.config.get<string>('TELNYX_WHATSAPP_FROM')?.trim();
+    if (!apiKey || !fromEnv) {
+      return null;
+    }
+    let telnyxWhatsappFrom: string;
+    try {
+      telnyxWhatsappFrom = normalizeTelnyxWhatsappFrom(fromEnv);
+    } catch {
+      this.logger.warn('Ignoring invalid TELNYX_WHATSAPP_FROM for demo tenant seed');
+      return null;
+    }
+
+    let existing = await this.tenants.findOne({
+      where: { whatsappPhoneNumberId: TELNYX_TECHFIND_DEMO_PHONE_ID },
+    });
+    if (!existing) {
+      existing = await this.tenants.findOne({
+        where: {
+          whatsappPhoneNumberId: TELNYX_PHONE_NUMBER_PLACEHOLDER,
+          primaryChannel: 'telnyx',
+        },
+      });
+    }
+
+    if (existing) {
+      existing.name = 'Techfind Consulting (Telnyx)';
+      existing.whatsappPhoneNumberId = TELNYX_TECHFIND_DEMO_PHONE_ID;
+      existing.flow = 'techfind_demo';
+      existing.primaryChannel = 'telnyx';
+      existing.telnyxWhatsappFrom = telnyxWhatsappFrom;
+      if (!existing.connectToken) {
+        existing.connectToken = newConnectToken();
+      }
+      return this.tenants.save(existing);
+    }
+
+    const saved = await this.tenants.save(
+      this.tenants.create({
+        name: 'Techfind Consulting (Telnyx)',
+        whatsappPhoneNumberId: TELNYX_TECHFIND_DEMO_PHONE_ID,
+        whatsappBusinessAccountId: null,
+        flow: 'techfind_demo',
+        primaryChannel: 'telnyx',
+        telnyxWhatsappFrom,
+        connectToken: newConnectToken(),
+      }),
+    );
+    this.logger.log(`Seeded Telnyx Techfind demo tenant id=${saved.id}`);
     return saved;
   }
 

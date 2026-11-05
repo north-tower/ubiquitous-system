@@ -34,7 +34,7 @@ export type OutboundTextJob = {
   to: string;
   text: string;
   channel?: WhatsappChannel;
-  /** Telnyx outbound `from` (E.164). Defaults to TELNYX_WHATSAPP_FROM when omitted. */
+  /** Telnyx outbound `from` (E.164). Uses tenant.telnyxWhatsappFrom or env fallback when omitted. */
   telnyxFrom?: string;
   /** Baileys replies go out on the socket that received the inbound message. */
   tenantId?: string;
@@ -77,6 +77,7 @@ export class OutboundMessageService {
       );
       return;
     }
+    await this.enrichTelnyxFrom(job);
     if (await this.trySendReplyButtons(job)) {
       return;
     }
@@ -445,6 +446,20 @@ export class OutboundMessageService {
       );
     }
     return plan;
+  }
+
+  private async enrichTelnyxFrom(job: OutboundTextJob): Promise<void> {
+    if (job.telnyxFrom?.trim()) {
+      return;
+    }
+    const channel = job.channel ?? (await this.resolveSendChannel(job));
+    if (channel !== 'telnyx' || !job.tenantId) {
+      return;
+    }
+    const tenant = await this.tenants.findById(job.tenantId);
+    if (tenant?.telnyxWhatsappFrom) {
+      job.telnyxFrom = tenant.telnyxWhatsappFrom;
+    }
   }
 
   private async resolveSendChannel(

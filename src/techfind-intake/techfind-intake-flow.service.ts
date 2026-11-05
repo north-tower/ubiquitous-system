@@ -31,10 +31,29 @@ import {
   TECHFIND_MENU_OPTIONS,
   type TechfindMenuOptionId,
 } from './techfind-menu-options';
+import type { BaileysListMessageSpec } from '../enquiry-flow/enquiry-baileys-interactive';
+import type { WhatsappReplyButtons } from '../outbound/whatsapp-reply-buttons';
+import {
+  techfindPlaaggFinishButtons,
+  techfindPlaaggIndustryButtons,
+  techfindPlaaggIndustryList,
+  techfindReaskMenuButtons,
+  techfindSupportStackButtons,
+  techfindTopMenuButtons,
+  techfindWebStackButtons,
+} from './techfind-interactive';
+import {
+  matchTechfindChoice,
+  matchTechfindTopMenu,
+  TECHFIND_SUPPORT_STACK_CHOICES,
+  TECHFIND_WEB_STACK_CHOICES,
+} from './techfind-menu-choices';
 
 export type TechfindIntakeReply = {
   replyText: string;
   silent?: boolean;
+  baileysList?: BaileysListMessageSpec;
+  replyButtons?: WhatsappReplyButtons;
 };
 
 const MENU_OPTIONS: readonly NumberedOption[] = TECHFIND_MENU_OPTIONS;
@@ -105,7 +124,7 @@ export class TechfindIntakeFlowService {
       TECHFIND_INTAKE_STEPS.AWAITING_MENU,
       {},
     );
-    return { replyText: copy.TECHFIND_INTAKE_GREETING };
+    return buttonReply(techfindTopMenuButtons());
   }
 
   private async ensureGreetingState(conversation: Conversation): Promise<void> {
@@ -125,6 +144,10 @@ export class TechfindIntakeFlowService {
     switch (session.currentStep) {
       case TECHFIND_INTAKE_STEPS.AWAITING_MENU:
         return this.captureMenu(session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_MENU_WEB:
+        return this.captureMenuWeb(session, text);
+      case TECHFIND_INTAKE_STEPS.AWAITING_MENU_SUPPORT:
+        return this.captureMenuSupport(session, text);
       case TECHFIND_INTAKE_STEPS.AWAITING_NAME:
         return this.captureName(session, text);
       case TECHFIND_INTAKE_STEPS.AWAITING_BUSINESS:
@@ -140,7 +163,7 @@ export class TechfindIntakeFlowService {
       case TECHFIND_INTAKE_STEPS.AWAITING_PLAAGG_FINISH:
         return this.capturePlaaggFinish(conversation, session, text);
       default:
-        return { replyText: copy.TECHFIND_INTAKE_GREETING };
+        return buttonReply(techfindTopMenuButtons());
     }
   }
 
@@ -149,14 +172,75 @@ export class TechfindIntakeFlowService {
     text: string,
   ): Promise<TechfindIntakeReply> {
     const matched = matchNumberedOption(text, MENU_OPTIONS);
-    if (!matched) {
-      return { replyText: copy.REASK_MENU };
+    if (matched) {
+      return this.selectService(session, matched.id as TechfindMenuOptionId);
     }
+
+    const top = matchTechfindTopMenu(text);
+    if (top?.type === 'service') {
+      return this.selectService(session, top.id);
+    }
+    if (top?.type === 'branch' && top.id === 'techfind_menu_web') {
+      return this.openWebStackMenu(session);
+    }
+    if (top?.type === 'branch' && top.id === 'techfind_menu_support') {
+      return this.openSupportStackMenu(session);
+    }
+
+    return buttonReply(techfindReaskMenuButtons());
+  }
+
+  private async captureMenuWeb(
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    const matched = matchTechfindChoice(text, TECHFIND_WEB_STACK_CHOICES);
+    if (!matched) {
+      return buttonReply(techfindWebStackButtons());
+    }
+    return this.selectService(session, matched.id as TechfindMenuOptionId);
+  }
+
+  private async captureMenuSupport(
+    session: TechfindIntakeSession,
+    text: string,
+  ): Promise<TechfindIntakeReply> {
+    const matched = matchTechfindChoice(text, TECHFIND_SUPPORT_STACK_CHOICES);
+    if (!matched) {
+      return buttonReply(techfindSupportStackButtons());
+    }
+    return this.selectService(session, matched.id as TechfindMenuOptionId);
+  }
+
+  private async openWebStackMenu(
+    session: TechfindIntakeSession,
+  ): Promise<TechfindIntakeReply> {
+    await this.sessions.save(session, {
+      step: TECHFIND_INTAKE_STEPS.AWAITING_MENU_WEB,
+      payload: session.payload,
+    });
+    return buttonReply(techfindWebStackButtons());
+  }
+
+  private async openSupportStackMenu(
+    session: TechfindIntakeSession,
+  ): Promise<TechfindIntakeReply> {
+    await this.sessions.save(session, {
+      step: TECHFIND_INTAKE_STEPS.AWAITING_MENU_SUPPORT,
+      payload: session.payload,
+    });
+    return buttonReply(techfindSupportStackButtons());
+  }
+
+  private async selectService(
+    session: TechfindIntakeSession,
+    serviceId: TechfindMenuOptionId,
+  ): Promise<TechfindIntakeReply> {
     await this.sessions.save(session, {
       step: TECHFIND_INTAKE_STEPS.AWAITING_NAME,
       payload: {
         ...session.payload,
-        serviceId: matched.id as TechfindMenuOptionId,
+        serviceId,
       },
     });
     return { replyText: copy.ASK_NAME };
@@ -219,9 +303,8 @@ export class TechfindIntakeFlowService {
         payload,
       });
       const menu = await this.plaaggMenuOptions(conversation.tenantId);
-      return {
-        replyText: `${copy.LEAD_SAVED}\n\n${plaaggCopy.plaaggIndustryMenu(menu)}`,
-      };
+      const replyText = `${copy.LEAD_SAVED}\n\n${plaaggCopy.plaaggIndustryMenu(menu)}`;
+      return this.withPlaaggIndustryMenu(replyText, menu);
     }
 
     await this.sessions.markComplete(session);
@@ -243,7 +326,10 @@ export class TechfindIntakeFlowService {
     const menu = await this.plaaggMenuOptions(conversation.tenantId);
     const matched = matchNumberedOption(text, menu);
     if (!matched) {
-      return { replyText: plaaggCopy.reaskPlaaggIndustry(menu) };
+      return this.withPlaaggIndustryMenu(
+        plaaggCopy.reaskPlaaggIndustry(menu),
+        menu,
+      );
     }
     const industryId = matched.id as PlaaggIndustryId;
     const flow = await this.industryFlows.findByPlaaggMenuId(
@@ -378,7 +464,7 @@ export class TechfindIntakeFlowService {
       plaaggCopy.PLAAGG_FINISH_MENU,
     ].join('\n\n');
 
-    return { replyText };
+    return this.withPlaaggFinishMenu(replyText);
   }
 
   private async capturePlaaggFinish(
@@ -388,7 +474,7 @@ export class TechfindIntakeFlowService {
   ): Promise<TechfindIntakeReply> {
     const matched = matchNumberedOption(text, FINISH_OPTIONS);
     if (!matched) {
-      return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+      return this.withPlaaggFinishMenu(plaaggCopy.PLAAGG_FINISH_MENU);
     }
 
     const industryId = session.payload.plaaggIndustryId ?? 'generic';
@@ -419,23 +505,42 @@ export class TechfindIntakeFlowService {
             plaaggLastDemoSummary: undefined,
           },
         });
-        return {
-          replyText: plaaggCopy.plaaggTryAnother(
-            await this.plaaggMenuOptions(conversation.tenantId),
-          ),
-        };
+        {
+          const menu = await this.plaaggMenuOptions(conversation.tenantId);
+          return this.withPlaaggIndustryMenu(
+            plaaggCopy.plaaggTryAnother(menu),
+            menu,
+          );
+        }
       case 'recommended_plan':
         if (!flow) {
-          return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+          return this.withPlaaggFinishMenu(plaaggCopy.PLAAGG_FINISH_MENU);
         }
-        return {
-          replyText: plaaggCopy.plaaggRecommendedPlanReply(
-            flow.definition.recommendedPlan,
-          ),
-        };
+        return this.withPlaaggFinishMenu(
+          plaaggCopy.plaaggRecommendedPlanReply(flow.definition.recommendedPlan),
+        );
       default:
-        return { replyText: plaaggCopy.PLAAGG_FINISH_MENU };
+        return this.withPlaaggFinishMenu(plaaggCopy.PLAAGG_FINISH_MENU);
     }
+  }
+
+  private withPlaaggIndustryMenu(
+    replyText: string,
+    options: readonly NumberedOption[],
+  ): TechfindIntakeReply {
+    if (options.length > 0 && options.length <= 3) {
+      const buttons = techfindPlaaggIndustryButtons(replyText, options);
+      return { replyText: buttons.text, replyButtons: buttons };
+    }
+    return {
+      replyText,
+      baileysList: techfindPlaaggIndustryList(replyText, options),
+    };
+  }
+
+  private withPlaaggFinishMenu(replyText: string): TechfindIntakeReply {
+    const buttons = techfindPlaaggFinishButtons(replyText);
+    return { replyText: buttons.text, replyButtons: buttons };
   }
 
   private async walkToDemoRunning(
@@ -608,4 +713,8 @@ export class TechfindIntakeFlowService {
     await this.stateMachine.enterHumanHandoff(conversation.id);
     return { replyText: copy.HUMAN_HANDOVER_ACK };
   }
+}
+
+function buttonReply(buttons: WhatsappReplyButtons): TechfindIntakeReply {
+  return { replyText: buttons.text, replyButtons: buttons };
 }

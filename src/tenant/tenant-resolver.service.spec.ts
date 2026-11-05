@@ -8,6 +8,7 @@ describe('TenantResolverService', () => {
     findDefault: jest.fn(),
     findOldestTwilioPrimary: jest.fn(),
     findOldestTelnyxPrimary: jest.fn(),
+    findByTelnyxWhatsappFrom: jest.fn(),
     findById: jest.fn(),
   };
 
@@ -20,6 +21,7 @@ describe('TenantResolverService', () => {
     tenantService.findDefault.mockReset();
     tenantService.findOldestTwilioPrimary.mockReset();
     tenantService.findOldestTelnyxPrimary.mockReset();
+    tenantService.findByTelnyxWhatsappFrom.mockReset();
     tenantService.findById.mockReset();
   });
 
@@ -68,11 +70,27 @@ describe('TenantResolverService', () => {
 
   it('resolves the Telnyx-primary tenant for Telnyx inbound', async () => {
     const tenant = { id: 'tenant-2', name: 'Telnyx Co' } as Tenant;
+    tenantService.findByTelnyxWhatsappFrom.mockResolvedValue(null);
     tenantService.findOldestTelnyxPrimary.mockResolvedValue(tenant);
 
-    await expect(resolver.resolveForTelnyxInbound()).resolves.toBe(tenant);
+    await expect(resolver.resolveForTelnyxInbound('+254700')).resolves.toBe(
+      tenant,
+    );
+    expect(tenantService.findByTelnyxWhatsappFrom).toHaveBeenCalledWith(
+      '+254700',
+    );
     expect(tenantService.findOldestTelnyxPrimary).toHaveBeenCalled();
     expect(tenantService.findDefault).not.toHaveBeenCalled();
+  });
+
+  it('prefers a tenant matched by Telnyx business number', async () => {
+    const tenant = { id: 'tenant-3', name: 'Acme Telnyx' } as Tenant;
+    tenantService.findByTelnyxWhatsappFrom.mockResolvedValue(tenant);
+
+    await expect(
+      resolver.resolveForTelnyxInbound('+254786487316'),
+    ).resolves.toBe(tenant);
+    expect(tenantService.findOldestTelnyxPrimary).not.toHaveBeenCalled();
   });
 
   it('falls back to the default tenant when no Twilio-primary tenant exists', async () => {

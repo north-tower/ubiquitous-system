@@ -106,6 +106,7 @@ export type DashboardTenantSummary = {
   name: string;
   flow: TenantFlow;
   primaryChannel: TenantPrimaryChannel | null;
+  telnyxWhatsappFrom: string | null;
   linkedPhone: string | null;
   status: BaileysSessionStatus | null;
   connectToken: string | null;

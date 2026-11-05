@@ -27,7 +27,17 @@ export class TenantResolverService {
     return this.tenantService.findDefault();
   }
 
-  async resolveForTelnyxInbound(): Promise<Tenant | null> {
+  async resolveForTelnyxInbound(
+    businessPhoneNumber?: string | null,
+  ): Promise<Tenant | null> {
+    if (businessPhoneNumber?.trim()) {
+      const byNumber = await this.tenantService.findByTelnyxWhatsappFrom(
+        businessPhoneNumber,
+      );
+      if (byNumber) {
+        return byNumber;
+      }
+    }
     const telnyxTenant = await this.tenantService.findOldestTelnyxPrimary();
     if (telnyxTenant) {
       return telnyxTenant;

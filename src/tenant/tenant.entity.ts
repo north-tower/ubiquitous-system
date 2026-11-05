@@ -83,6 +83,18 @@ export class Tenant {
   })
   connectToken: string | null;
 
+  /**
+   * Verified Telnyx WABA number (E.164) for this tenant when primary_channel
+   * is telnyx. Server-wide TELNYX_WHATSAPP_FROM is only a bootstrap default.
+   */
+  @Column({
+    name: 'telnyx_whatsapp_from',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  telnyxWhatsappFrom: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

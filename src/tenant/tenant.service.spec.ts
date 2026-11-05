@@ -38,6 +38,8 @@ describe('TenantService.findDefault', () => {
 
 describe('TenantService.createStaffTenant', () => {
   const tenants = {
+    find: jest.fn(),
+    findOne: jest.fn(),
     create: jest.fn((row: Partial<Tenant>) => row),
     save: jest.fn(async (row: Partial<Tenant>) => ({ ...row, id: 'new-id' })),
   };
@@ -50,9 +52,14 @@ describe('TenantService.createStaffTenant', () => {
   beforeEach(() => {
     tenants.create.mockClear();
     tenants.save.mockClear();
+    tenants.findOne.mockReset();
+    tenants.findOne.mockResolvedValue(null);
     config.get.mockImplementation((key: string) => {
       if (key === 'BAILEYS_ENABLED') {
         return 'true';
+      }
+      if (key === 'TELNYX_API_KEY') {
+        return 'test-key';
       }
       return undefined;
     });
@@ -99,6 +106,19 @@ describe('TenantService.createStaffTenant', () => {
         primaryChannel: 'meta',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('stores telnyx whatsapp from and a telnyx placeholder id', async () => {
+    const saved = await service.createStaffTenant({
+      name: 'Telnyx client',
+      flow: 'techfind_demo',
+      primaryChannel: 'telnyx',
+      telnyxWhatsappFrom: '+254712345678',
+    });
+
+    expect(saved.primaryChannel).toBe('telnyx');
+    expect(saved.telnyxWhatsappFrom).toBe('+254712345678');
+    expect(saved.whatsappPhoneNumberId).toMatch(/^telnyx:[0-9a-f-]{36}$/i);
   });
 });
 
