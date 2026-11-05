@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'crypto';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { Tenant } from './tenant.entity';
 import {
   DEFAULT_TENANT_PRIMARY_CHANNEL,
@@ -69,10 +69,13 @@ export class TenantService implements OnModuleInit {
     return tenant ?? null;
   }
 
-  /** Oldest tenant created with Telnyx as the primary WhatsApp channel. */
+  /** Oldest Telnyx-primary tenant that has a WhatsApp number assigned in WhatsApp Desk. */
   async findOldestTelnyxPrimary(): Promise<Tenant | null> {
     const [tenant] = await this.tenants.find({
-      where: { primaryChannel: 'telnyx' },
+      where: {
+        primaryChannel: 'telnyx',
+        telnyxWhatsappFrom: Not(IsNull()),
+      },
       order: { createdAt: 'ASC' },
       take: 1,
     });
@@ -320,19 +323,7 @@ export class TenantService implements OnModuleInit {
       return this.tenants.save(existing);
     }
 
-    const saved = await this.tenants.save(
-      this.tenants.create({
-        name: 'Techfind Consulting (Telnyx)',
-        whatsappPhoneNumberId: TELNYX_TECHFIND_DEMO_PHONE_ID,
-        whatsappBusinessAccountId: null,
-        flow: 'techfind_demo',
-        primaryChannel: 'telnyx',
-        telnyxWhatsappFrom: null,
-        connectToken: newConnectToken(),
-      }),
-    );
-    this.logger.log(`Seeded Telnyx Techfind demo tenant id=${saved.id}`);
-    return saved;
+    return null;
   }
 
   private async findExistingTechfind(

@@ -177,7 +177,7 @@ export class WhatsappWebhookService implements OnModuleInit {
     }
 
     this.logger.log(
-      `Telnyx inbound from=${parsed.phoneNumber} textLen=${parsed.text?.length ?? 0} messageId=${parsed.messageId ?? 'none'}`,
+      `Telnyx inbound from=${parsed.phoneNumber} business=${parsed.businessPhoneNumber ?? 'none'} textLen=${parsed.text?.length ?? 0} messageId=${parsed.messageId ?? 'none'}`,
     );
 
     const tenant = await this.tenantResolver.resolveForTelnyxInbound(
@@ -188,6 +188,19 @@ export class WhatsappWebhookService implements OnModuleInit {
       return;
     }
 
+    const telnyxFrom =
+      parsed.businessPhoneNumber ?? tenant.telnyxWhatsappFrom ?? undefined;
+    if (!telnyxFrom) {
+      this.logger.error(
+        `Telnyx inbound tenant=${tenant.id} (${tenant.name}) has no WhatsApp number — assign telnyxWhatsappFrom in WhatsApp Desk`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Telnyx inbound resolved tenant=${tenant.id} name=${tenant.name} telnyxFrom=${telnyxFrom}`,
+    );
+
     try {
       await this.processInbound({
         tenantId: tenant.id,
@@ -196,8 +209,7 @@ export class WhatsappWebhookService implements OnModuleInit {
         text: parsed.text,
         raw: parsed.raw,
         channel: 'telnyx',
-        telnyxFrom:
-          parsed.businessPhoneNumber ?? tenant.telnyxWhatsappFrom ?? undefined,
+        telnyxFrom,
       });
     } catch (error) {
       this.logInboundProcessingFailed('Telnyx', error);
