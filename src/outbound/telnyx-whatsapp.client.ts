@@ -131,21 +131,27 @@ export class TelnyxWhatsappClient implements WhatsappSender {
     return Boolean(this.config.get<string>('TELNYX_API_KEY'));
   }
 
+  private requireOutboundFrom(fromOverride?: string): string {
+    const fromRaw = fromOverride?.trim();
+    if (!fromRaw) {
+      throw new Error(
+        'Telnyx outbound from number is required (tenant Telnyx WhatsApp number from WhatsApp Desk, or the inbound business number on the webhook)',
+      );
+    }
+    return toE164(fromRaw);
+  }
+
   async sendText(
     to: string,
     body: string,
     fromOverride?: string,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const apiKey = this.config.get<string>('TELNYX_API_KEY');
-    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
-    const fromRaw = fromOverride?.trim() || configuredFrom;
-    if (!apiKey || !fromRaw) {
-      throw new Error(
-        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
-      );
+    if (!apiKey) {
+      throw new Error('TELNYX_API_KEY is required');
     }
+    const from = this.requireOutboundFrom(fromOverride);
 
-    const from = toE164(fromRaw);
     const toAddress = toE164(to);
 
     const messagingProfileId = await resolveMessagingProfileId(
@@ -171,15 +177,10 @@ export class TelnyxWhatsappClient implements WhatsappSender {
     fromOverride?: string,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const apiKey = this.config.get<string>('TELNYX_API_KEY');
-    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
-    const fromRaw = fromOverride?.trim() || configuredFrom;
-    if (!apiKey || !fromRaw) {
-      throw new Error(
-        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
-      );
+    if (!apiKey) {
+      throw new Error('TELNYX_API_KEY is required');
     }
-
-    const from = toE164(fromRaw);
+    const from = this.requireOutboundFrom(fromOverride);
     const toAddress = toE164(to);
 
     const messagingProfileId = await resolveMessagingProfileId(
@@ -205,15 +206,10 @@ export class TelnyxWhatsappClient implements WhatsappSender {
     fromOverride?: string,
   ): Promise<{ messageId: string | null; raw: unknown }> {
     const apiKey = this.config.get<string>('TELNYX_API_KEY');
-    const configuredFrom = this.config.get<string>('TELNYX_WHATSAPP_FROM');
-    const fromRaw = fromOverride?.trim() || configuredFrom;
-    if (!apiKey || !fromRaw) {
-      throw new Error(
-        'TELNYX_API_KEY and TELNYX_WHATSAPP_FROM (or inbound business number) are required',
-      );
+    if (!apiKey) {
+      throw new Error('TELNYX_API_KEY is required');
     }
-
-    const from = toE164(fromRaw);
+    const from = this.requireOutboundFrom(fromOverride);
     const toAddress = toE164(to);
     const messagingProfileId = await resolveMessagingProfileId(
       apiKey,

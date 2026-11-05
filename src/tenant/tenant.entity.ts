@@ -85,7 +85,7 @@ export class Tenant {
 
   /**
    * Verified Telnyx WABA number (E.164) for this tenant when primary_channel
-   * is telnyx. Server-wide TELNYX_WHATSAPP_FROM is only a bootstrap default.
+   * is telnyx. Set when creating the tenant in WhatsApp Desk.
    */
   @Column({
     name: 'telnyx_whatsapp_from',

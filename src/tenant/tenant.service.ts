@@ -182,11 +182,10 @@ export class TenantService implements OnModuleInit {
   }
 
   private parseTelnyxWhatsappFromInput(raw: string | undefined): string {
-    const fallback = this.config.get<string>('TELNYX_WHATSAPP_FROM')?.trim();
-    const source = raw?.trim() || fallback;
+    const source = raw?.trim();
     if (!source) {
       throw new BadRequestException(
-        'telnyxWhatsappFrom is required when primaryChannel is telnyx',
+        'telnyxWhatsappFrom is required when primaryChannel is telnyx (set the Telnyx WhatsApp number in WhatsApp Desk)',
       );
     }
     try {
@@ -289,20 +288,12 @@ export class TenantService implements OnModuleInit {
   }
 
   /**
-   * Second tenant for Telnyx WABA: techfind_demo on primary_channel=telnyx.
-   * Inbound Telnyx webhooks resolve here before the default Baileys/Meta row.
+   * Optional legacy Telnyx demo row (techfind_demo). WhatsApp numbers are set per
+   * tenant in WhatsApp Desk — not from server env.
    */
   async ensureTelnyxTechfindDemoTenant(): Promise<Tenant | null> {
     const apiKey = this.config.get<string>('TELNYX_API_KEY');
-    const fromEnv = this.config.get<string>('TELNYX_WHATSAPP_FROM')?.trim();
-    if (!apiKey || !fromEnv) {
-      return null;
-    }
-    let telnyxWhatsappFrom: string;
-    try {
-      telnyxWhatsappFrom = normalizeTelnyxWhatsappFrom(fromEnv);
-    } catch {
-      this.logger.warn('Ignoring invalid TELNYX_WHATSAPP_FROM for demo tenant seed');
+    if (!apiKey) {
       return null;
     }
 
@@ -317,16 +308,12 @@ export class TenantService implements OnModuleInit {
         },
       });
     }
-    if (!existing) {
-      existing = await this.findByTelnyxWhatsappFrom(telnyxWhatsappFrom);
-    }
 
     if (existing) {
       existing.name = 'Techfind Consulting (Telnyx)';
       existing.whatsappPhoneNumberId = TELNYX_TECHFIND_DEMO_PHONE_ID;
       existing.flow = 'techfind_demo';
       existing.primaryChannel = 'telnyx';
-      existing.telnyxWhatsappFrom = telnyxWhatsappFrom;
       if (!existing.connectToken) {
         existing.connectToken = newConnectToken();
       }
@@ -340,7 +327,7 @@ export class TenantService implements OnModuleInit {
         whatsappBusinessAccountId: null,
         flow: 'techfind_demo',
         primaryChannel: 'telnyx',
-        telnyxWhatsappFrom,
+        telnyxWhatsappFrom: null,
         connectToken: newConnectToken(),
       }),
     );

@@ -34,7 +34,7 @@ export type OutboundTextJob = {
   to: string;
   text: string;
   channel?: WhatsappChannel;
-  /** Telnyx outbound `from` (E.164). Uses tenant.telnyxWhatsappFrom or env fallback when omitted. */
+  /** Telnyx outbound `from` (E.164). Loaded from tenant.telnyxWhatsappFrom when omitted. */
   telnyxFrom?: string;
   /** Baileys replies go out on the socket that received the inbound message. */
   tenantId?: string;

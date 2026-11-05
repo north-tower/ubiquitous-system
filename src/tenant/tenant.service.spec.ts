@@ -120,6 +120,17 @@ describe('TenantService.createStaffTenant', () => {
     expect(saved.telnyxWhatsappFrom).toBe('+254712345678');
     expect(saved.whatsappPhoneNumberId).toMatch(/^telnyx:[0-9a-f-]{36}$/i);
   });
+
+  it('requires telnyxWhatsappFrom when primaryChannel is telnyx', async () => {
+    await expect(
+      service.createStaffTenant({
+        name: 'Telnyx client',
+        flow: 'techfind_demo',
+        primaryChannel: 'telnyx',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tenants.save).not.toHaveBeenCalled();
+  });
 });
 
 describe('TenantService.ensureTelnyxTechfindDemoTenant', () => {
@@ -142,23 +153,19 @@ describe('TenantService.ensureTelnyxTechfindDemoTenant', () => {
       if (key === 'TELNYX_API_KEY') {
         return 'test-key';
       }
-      if (key === 'TELNYX_WHATSAPP_FROM') {
-        return '+254786487316';
-      }
       return undefined;
     });
   });
 
-  it('updates an existing tenant that already owns TELNYX_WHATSAPP_FROM', async () => {
+  it('updates an existing telnyx demo row without overwriting its WhatsApp number', async () => {
     const existing = {
       id: 'staff-telnyx',
       whatsappPhoneNumberId: 'telnyx:other',
       primaryChannel: 'telnyx',
-      telnyxWhatsappFrom: '+254786487316',
+      telnyxWhatsappFrom: '+254781580380',
       connectToken: 'keep-me',
     } as Tenant;
     tenants.findOne
-      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(existing);
 
@@ -166,6 +173,7 @@ describe('TenantService.ensureTelnyxTechfindDemoTenant', () => {
 
     expect(saved?.whatsappPhoneNumberId).toBe('telnyx:techfind');
     expect(saved?.flow).toBe('techfind_demo');
+    expect(saved?.telnyxWhatsappFrom).toBe('+254781580380');
     expect(saved?.connectToken).toBe('keep-me');
     expect(tenants.create).not.toHaveBeenCalled();
   });
