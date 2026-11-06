@@ -280,6 +280,7 @@ export class WhatsappWebhookService implements OnModuleInit {
       twilioContent = reply.twilioContent;
       twilioContentVariables = reply.twilioContentVariables;
       baileysList = reply.baileysList;
+      replyButtons = reply.replyButtons;
       silent = Boolean(reply.silent);
     } else if (input.flow === 'pos_ops') {
       const reply = await this.posOpsFlow.handleInbound(

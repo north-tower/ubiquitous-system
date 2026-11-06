@@ -46,6 +46,15 @@ describe('enquiryBaileysListForStep', () => {
     );
   });
 
+  it('builds an edit-field list with option ids as rowId', () => {
+    const list = enquiryBaileysListForStep(
+      ENQUIRY_STEPS.AWAITING_EDIT_FIELD,
+      'Which part should I change?\n1  Event type',
+    );
+    expect(list?.buttonText).toBe('Choose a field');
+    expect(list?.sections[0].rows[0].rowId).toBe('eventType');
+  });
+
   it('returns nothing for steps without Baileys interactivity yet', () => {
     expect(
       enquiryBaileysListForStep(ENQUIRY_STEPS.AWAITING_DATE, 'When?'),

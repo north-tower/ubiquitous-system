@@ -208,6 +208,41 @@ describe('WhatsappWebhookService', () => {
     ]);
   });
 
+  it('forwards enquiry reply buttons on the outbound job', async () => {
+    tenantResolver.resolveById.mockResolvedValue({
+      id: 'tenant-enquiry',
+      flow: 'enquiry_intake',
+    });
+    enquiryFlow.handleInbound.mockResolvedValue({
+      replyText: 'Does that look right?',
+      replyButtons: {
+        text: 'Does that look right?',
+        buttons: [
+          { id: 'confirm', title: 'Yes, send it' },
+          { id: 'edit', title: 'Edit something' },
+        ],
+      },
+    });
+
+    await createService().handleBaileysInbound({
+      tenantId: 'tenant-enquiry',
+      phoneNumber: '254798229340',
+      text: '1',
+      raw: {},
+    });
+
+    expect(outbound.sendAll).toHaveBeenCalledWith([
+      expect.objectContaining({
+        replyButtons: expect.objectContaining({
+          buttons: [
+            { id: 'confirm', title: 'Yes, send it' },
+            { id: 'edit', title: 'Edit something' },
+          ],
+        }),
+      }),
+    ]);
+  });
+
   it('replies on Twilio when inbound arrived via Twilio', async () => {
     tenantResolver.resolveForTwilioInbound.mockResolvedValue({ id: 'tenant-1' });
 

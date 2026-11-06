@@ -131,10 +131,14 @@ describe('EnquiryFlowService', () => {
     });
   });
 
-  it('offers the opening event question as a tappable list', async () => {
+  it('offers the opening event question as a numbered list', async () => {
     const opening = await service.handleInbound(conversation, 'hi');
     expect(opening.twilioContent).toBe('eventType');
+    expect(opening.baileysList).toBeUndefined();
+    expect(opening.replyButtons).toBeUndefined();
     expect(opening.replyText).toMatch(/What are you planning/i);
+    expect(opening.replyText).toMatch(/1\s+Wedding/);
+    expect(opening.replyText).toMatch(/Reply with a number/i);
     await say('hi');
     const afterEvent = await service.handleInbound(conversation, 'church');
     expect(afterEvent.prefaceTexts?.[0]).toMatch(/Church event/i);
@@ -376,7 +380,28 @@ describe('EnquiryFlowService', () => {
     await expect(say('hi')).resolves.toMatch(
       /What name should we put on the enquiry/i,
     );
-    await expect(say('Mike')).resolves.toMatch(/best phone number/i);
+    const phone = await service.handleInbound(conversation, 'Mike');
+    expect(phone.replyText).toMatch(/best phone number/i);
+    expect(phone.replyButtons?.buttons[0].id).toBe('use_whatsapp');
+  });
+
+  it('accepts a Telnyx/WhatsApp phone button id as this WhatsApp number', async () => {
+    await say('hi');
+    await say('1');
+    await say('20th December');
+    await say('4');
+    await say('600');
+    await say('nakuru');
+    await say('skip');
+    await say('skip');
+    await say('skip');
+    await say('Mike');
+    const confirm = await service.handleInbound(conversation, 'use_whatsapp');
+    expect(confirm.replyButtons?.buttons.map((button) => button.id)).toEqual([
+      'confirm',
+      'edit',
+    ]);
+    expect(confirm.replyText).toMatch(/Does that look right/i);
   });
 
   it('normalizes a low budget, warns, and flags it for staff', async () => {

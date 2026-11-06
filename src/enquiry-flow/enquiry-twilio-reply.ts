@@ -1,7 +1,6 @@
-import {
-  enquiryBaileysListForStep,
-  type BaileysListMessageSpec,
-} from './enquiry-baileys-interactive';
+import type { BaileysListMessageSpec } from './enquiry-baileys-interactive';
+import { enquiryButtonsForStep } from './enquiry-interactive';
+import type { WhatsappReplyButtons } from '../outbound/whatsapp-reply-buttons';
 import { confirmationPlayback, formatSummary } from './enquiry-copy';
 import type { EnquiryPayload } from './enquiry-payload';
 import { ENQUIRY_STEPS, type EnquiryStep } from './enquiry-steps';
@@ -34,8 +33,9 @@ export type EnquiryReply = {
   twilioContent?: EnquiryTwilioContentKey;
   /** Twilio ContentVariables JSON keys (e.g. "1" for {{1}} in confirm templates). */
   twilioContentVariables?: Record<string, string>;
-  /** Baileys-only interactive outbound (Twilio uses twilioContent). */
   baileysList?: BaileysListMessageSpec;
+  /** Reply buttons when there are 1–3 choices (Baileys, Telnyx, Meta). */
+  replyButtons?: WhatsappReplyButtons;
 };
 
 export function enquiryTwilioContentEnvVar(
@@ -70,24 +70,34 @@ export function enquiryReplyForStep(
   step: EnquiryStep,
   replyText: string,
 ): EnquiryReply {
-  const baileysList = enquiryBaileysListForStep(step, replyText);
+  const replyButtons = enquiryButtonsForStep(step, replyText);
   const twilioContent = ENQUIRY_STEP_TWILIO_CONTENT[step];
+  const body = replyButtons?.text ?? replyText;
   if (!twilioContent) {
-    return { replyText, ...(baileysList ? { baileysList } : {}) };
+    return {
+      replyText: body,
+      ...(replyButtons ? { replyButtons } : {}),
+    };
   }
   const twilioContentVariables = twilioListPickerVariables(step, replyText);
   return {
-    replyText,
+    replyText: body,
     twilioContent,
     ...(twilioContentVariables ? { twilioContentVariables } : {}),
-    ...(baileysList ? { baileysList } : {}),
+    ...(replyButtons ? { replyButtons } : {}),
   };
 }
 
 export function confirmEnquiryReply(payload: EnquiryPayload): EnquiryReply {
+  const replyText = confirmationPlayback(payload);
+  const replyButtons = enquiryButtonsForStep(
+    ENQUIRY_STEPS.AWAITING_CONFIRM,
+    replyText,
+  );
   return {
-    replyText: confirmationPlayback(payload),
+    replyText: replyButtons?.text ?? replyText,
     twilioContent: 'confirm',
     twilioContentVariables: { '1': formatSummary(payload) },
+    ...(replyButtons ? { replyButtons } : {}),
   };
 }

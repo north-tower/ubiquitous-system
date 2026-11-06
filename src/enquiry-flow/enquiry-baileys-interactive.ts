@@ -4,6 +4,7 @@ import {
 } from './match-numbered-option';
 import {
   BUDGET_OPTIONS,
+  EDIT_FIELD_OPTIONS,
   EVENT_TYPE_OPTIONS,
   SERVICE_OPTIONS,
 } from './enquiry-options';
@@ -34,6 +35,8 @@ const ENQUIRY_BAILEYS_LIST_BY_STEP: Partial<
     servicesListMessage(replyText),
   [ENQUIRY_STEPS.AWAITING_BUDGET]: (replyText) =>
     budgetListMessage(replyText),
+  [ENQUIRY_STEPS.AWAITING_EDIT_FIELD]: (replyText) =>
+    editFieldListMessage(replyText),
 };
 
 export function enquiryBaileysListForStep(
@@ -78,6 +81,25 @@ function budgetListMessage(replyText: string): BaileysListMessageSpec {
       {
         title: 'Budget',
         rows: BUDGET_OPTIONS.map((option) => ({
+          title: option.label,
+          rowId: option.id,
+        })),
+      },
+    ],
+  };
+}
+
+function editFieldListMessage(replyText: string): BaileysListMessageSpec {
+  return {
+    kind: 'list',
+    text: stripOptionListFromReply(replyText, EDIT_FIELD_OPTIONS),
+    title: 'Edit enquiry',
+    buttonText: 'Choose a field',
+    pollSelectableCount: 1,
+    sections: [
+      {
+        title: 'Change',
+        rows: EDIT_FIELD_OPTIONS.map((option) => ({
           title: option.label,
           rowId: option.id,
         })),

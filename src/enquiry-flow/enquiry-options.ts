@@ -91,6 +91,14 @@ export const BUDGET_OPTIONS: NumberedOption[] = [
   },
 ];
 
+export const PHONE_OPTIONS: NumberedOption[] = [
+  {
+    id: 'use_whatsapp',
+    label: 'Use this number',
+    aliases: ['1', 'this number', 'whatsapp', 'same number'],
+  },
+];
+
 export const CONFIRM_OPTIONS: NumberedOption[] = [
   {
     id: 'confirm',

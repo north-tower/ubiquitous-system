@@ -14,6 +14,7 @@ import {
   CONFIRM_OPTIONS,
   EDIT_FIELD_OPTIONS,
   EVENT_TYPE_OPTIONS,
+  PHONE_OPTIONS,
   RETURNING_OPTIONS,
   SERVICE_OPTIONS,
 } from './enquiry-options';
@@ -503,7 +504,9 @@ export class EnquiryFlowService {
     text: string,
   ): Promise<EnquiryReply> {
     const fromWhatsapp = parseKenyanPhone(conversation.prospectPhone);
-    const choseWhatsapp = /^\s*1\s*[.)]?\s*$/.test(text);
+    const choseWhatsapp =
+      matchNumberedOption(text, PHONE_OPTIONS) !== null ||
+      /^\s*1\s*[.)]?\s*$/.test(text);
     const normalized = choseWhatsapp ? fromWhatsapp : parseKenyanPhone(text);
 
     if (!normalized) {

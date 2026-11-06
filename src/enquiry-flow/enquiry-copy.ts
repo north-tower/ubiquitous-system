@@ -10,6 +10,7 @@ import {
 import type { EnquiryPayload } from './enquiry-payload';
 
 const HANDOVER_HINT = 'Type *agent* anytime to talk to the team.';
+export const ENQUIRY_REPLY_WITH_NUMBER = 'Reply with a number.';
 const PROGRESS = {
   event: '1 of 6',
   date: '2 of 6',
@@ -22,6 +23,7 @@ const PROGRESS = {
 export const ASK_EVENT_TYPE = [
   `What are you planning? (${PROGRESS.event})`,
   eventTypeList(),
+  ENQUIRY_REPLY_WITH_NUMBER,
 ].join('\n');
 
 export const GREETING = [
@@ -94,6 +96,7 @@ export function ackBudgetSkipped(): string {
 export const ASK_SERVICES = [
   `What would you like us to handle? You can pick more than one — e.g. *1, 2* or *sound and lighting*. (${PROGRESS.services})`,
   serviceList(),
+  ENQUIRY_REPLY_WITH_NUMBER,
 ].join('\n');
 
 export const ASK_GUESTS = `Roughly how many guests? (${PROGRESS.guests})`;
@@ -110,7 +113,7 @@ export const ASK_BUDGET = [
   `What's the budget range for this? (${PROGRESS.budget})`,
   budgetList(),
   '',
-  'A figure also works — *80k* or *KES 80,000* — or type *skip*.',
+  'Reply with a number, a figure like *80k*, or type *skip*.',
 ].join('\n');
 
 export function askBudgetLow(display: string): string {
@@ -151,6 +154,7 @@ export function confirmationPlayback(payload: EnquiryPayload): string {
 export const ASK_EDIT_FIELD = [
   'Which part should I change?',
   editFieldList(),
+  ENQUIRY_REPLY_WITH_NUMBER,
 ].join('\n');
 
 export function submittedReply(
